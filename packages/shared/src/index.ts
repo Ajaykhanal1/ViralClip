@@ -1,0 +1,126 @@
+export const API_PREFIX = '/api/v1';
+
+/** BullMQ queue names. Kept here so producers and workers cannot drift apart. */
+export const QUEUE_NAMES = {
+  videoPipeline: 'video-pipeline',
+} as const;
+
+export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
+
+/** Payload for the video processing pipeline. Processing happens in workers only. */
+export interface VideoPipelineJob {
+  videoId: number;
+  projectId: number;
+  storageKey: string;
+  requestedAt: string;
+}
+
+export interface ApiSuccess<T> {
+  success: true;
+  data: T;
+  requestId?: string;
+}
+
+export interface ApiFailure {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+  requestId?: string;
+}
+
+export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
+
+export interface HealthPayload {
+  status: 'ok';
+  service: string;
+  version: string;
+  uptimeSeconds: number;
+  timestamp: string;
+}
+
+export type DependencyStatus = 'up' | 'down';
+
+export interface DependencyCheck {
+  status: DependencyStatus;
+  latencyMs: number;
+  error?: string;
+}
+
+export interface ReadinessPayload {
+  status: 'ok' | 'degraded';
+  checks: {
+    mysql: DependencyCheck;
+    redis: DependencyCheck;
+  };
+  timestamp: string;
+}
+
+export type ProjectStatus = 'draft' | 'processing' | 'ready' | 'failed';
+export type VideoStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
+export type ClipStatus = 'pending' | 'processing' | 'ready' | 'failed';
+
+export interface Project {
+  id: number;
+  userId: number;
+  title: string;
+  status: ProjectStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Video {
+  id: number;
+  projectId: number;
+  originalFilename: string;
+  storageKey: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  durationSeconds: number | null;
+  status: VideoStatus;
+  createdAt: string;
+}
+
+export interface Clip {
+  id: number;
+  videoId: number;
+  title: string;
+  startSeconds: number;
+  endSeconds: number;
+  storageKey: string | null;
+  status: ClipStatus;
+  viralityScore: number | null;
+  createdAt: string;
+}
+
+export interface RedisConnection {
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  db: number;
+  tls?: Record<string, never>;
+}
+
+export function redisConnectionFromUrl(url: string): RedisConnection {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'redis:' && parsed.protocol !== 'rediss:') {
+    throw new Error(`Unsupported Redis protocol: ${parsed.protocol}`);
+  }
+
+  const db = Number(parsed.pathname.replace('/', '') || 0);
+  if (!Number.isInteger(db) || db < 0) {
+    throw new Error(`Invalid Redis database index in URL: ${url}`);
+  }
+
+  return {
+    host: parsed.hostname,
+    port: Number(parsed.port || 6379),
+    ...(parsed.username ? { username: decodeURIComponent(parsed.username) } : {}),
+    ...(parsed.password ? { password: decodeURIComponent(parsed.password) } : {}),
+    db,
+    ...(parsed.protocol === 'rediss:' ? { tls: {} } : {}),
+  };
+}

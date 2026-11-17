@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# builds
+dist/
+.next/
+out/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# local storage & media
+storage/
+tmp/
+*.mp4
+*.mov
+*.webm
+
+# logs & editors
+*.log
+.DS_Store
+.vscode/
+.idea/
