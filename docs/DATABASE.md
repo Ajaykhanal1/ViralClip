@@ -25,10 +25,15 @@ credentials stay aligned.
 
 ## Schema
 
-`apps/api/migrations/001_init.sql` creates the Phase 1 tables:
+`apps/api/migrations/001_init.sql` creates the Phase 1 tables and `002_auth.sql` adds accounts and
+sessions:
 
 ```
 users 1 ─── n projects 1 ─── n videos 1 ─── n clips
+  │
+  ├── n refresh_tokens
+  ├── n email_verifications
+  └── n password_resets
 ```
 
 ### users
@@ -38,7 +43,46 @@ users 1 ─── n projects 1 ─── n videos 1 ─── n clips
 | `id` | BIGINT UNSIGNED AI | PK |
 | `email` | VARCHAR(255) | Unique |
 | `display_name` | VARCHAR(120) | |
+| `password_hash` | VARCHAR(255) | bcrypt hash; never returned by the API |
+| `role` | ENUM | `user`, `admin`; default `user` |
+| `email_verified_at` | TIMESTAMP NULL | Set when the verification token is consumed |
+| `last_login_at` | TIMESTAMP NULL | Reserved for login reporting |
 | `created_at`, `updated_at` | TIMESTAMP | DB-managed |
+
+### refresh_tokens
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | BIGINT UNSIGNED AI | PK |
+| `user_id` | BIGINT UNSIGNED | FK → `users.id`, cascade delete |
+| `token_hash` | CHAR(64) | Unique SHA-256 of the opaque token |
+| `expires_at` | TIMESTAMP | 30 days by default |
+| `revoked_at` | TIMESTAMP NULL | Set on rotation, logout, password change, or reuse detection |
+| `created_at` | TIMESTAMP | |
+
+Index: `(user_id, expires_at)`.
+
+### email_verifications
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | BIGINT UNSIGNED AI | PK |
+| `user_id` | BIGINT UNSIGNED | FK → `users.id`, cascade delete |
+| `token_hash` | CHAR(64) | Unique SHA-256 of the emailed token |
+| `expires_at` | TIMESTAMP | 24 hours |
+| `used_at` | TIMESTAMP NULL | Single use |
+| `created_at` | TIMESTAMP | |
+
+### password_resets
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | BIGINT UNSIGNED AI | PK |
+| `user_id` | BIGINT UNSIGNED | FK → `users.id`, cascade delete |
+| `token_hash` | CHAR(64) | Unique SHA-256 of the emailed token |
+| `expires_at` | TIMESTAMP | 1 hour |
+| `used_at` | TIMESTAMP NULL | Single use |
+| `created_at` | TIMESTAMP | |
 
 ### projects
 
@@ -113,7 +157,7 @@ npm run db:status    # show applied/pending
 ### Adding a migration
 
 ```sql
--- apps/api/migrations/002_add_render_columns.sql
+-- apps/api/migrations/003_add_render_columns.sql
 ALTER TABLE clips ADD COLUMN render_path VARCHAR(512) NULL AFTER storage_key;
 ```
 
@@ -126,8 +170,10 @@ npm run db:migrate
 - Never store video, audio, subtitles, or thumbnails as BLOBs. Store a `storage_key` and write the
   bytes to local storage or S3.
 - All queries use placeholders (`?`); never interpolate user input into SQL.
-- Foreign keys are enforced; inserting a video for a missing project returns `404
+- Foreign keys are enforced; inserting a video for a missing or foreign project returns `404
   PROJECT_NOT_FOUND` via the service layer.
+- Passwords are bcrypt hashes. Refresh, reset, and verification tokens are stored only as SHA-256
+  hashes; the plaintext token exists only in the cookie or email link.
 - Timestamps are UTC in the application (`timezone: 'Z'`); MySQL stores them in its own time zone
   configuration.
 - ID columns are `BIGINT UNSIGNED`; API types use `number`, safe for realistic row counts.

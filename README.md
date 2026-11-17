@@ -1,7 +1,8 @@
 # ViralClip AI
 
-AI-powered YouTube Shorts creation platform. **Phase 1: foundation and architecture.** Services,
-contracts, queue, database, and health checks are wired; features are intentionally deferred.
+AI-powered YouTube Shorts creation platform. **Phase 2: accounts and access.** Registration, login,
+email verification, password recovery, profile settings, sessions, and role checks are implemented.
+Media features are intentionally deferred.
 
 ## Stack
 
@@ -19,8 +20,12 @@ npm run dev             # API :4000, worker :4001, web :3000
 npm run dev:ai          # FastAPI :8000 (activate services/ai/.venv first)
 ```
 
-Open <http://localhost:3000>. The dashboard runs `/api/v1/health/ready` and shows MySQL/Redis
-connectivity.
+Open <http://localhost:3000>. Create an account at `/register`, then use `/settings/profile` to
+update your name, confirm your email, or change your password. The dashboard still runs
+`/api/v1/health/ready` and shows MySQL/Redis connectivity.
+
+Without `SMTP_HOST`, development logs verification and password-reset links to the API console
+instead of sending email.
 
 Prerequisites, AI engine setup, and troubleshooting: [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md).
 
@@ -57,8 +62,10 @@ docs/         Architecture, database, flow, workflow, security
 - [Development workflow](docs/DEVELOPMENT_WORKFLOW.md)
 - [Security](docs/SECURITY.md)
 
-## Phase 1 boundaries
+## Phase boundaries
 
-The API never processes media. `POST /api/v1/videos` persists metadata and enqueues a job; the
-worker processor is a logging stub marked `shortcut:` in code. Upload, auth, transcription, clip
-selection, rendering, S3, and application Dockerfiles are Phase 2.
+Authentication is real: HTTP-only cookies, short-lived access tokens, rotating refresh tokens,
+hashed passwords, and ownership checks on the video endpoint. The API still never processes media.
+`POST /api/v1/videos` requires a signed-in user and persists metadata before enqueueing a job; the
+worker processor is a logging stub marked `shortcut:` in code. Upload, transcription, project
+management, clip selection, rendering, S3, and application Dockerfiles remain for later phases.

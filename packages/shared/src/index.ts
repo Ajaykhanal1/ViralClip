@@ -1,5 +1,14 @@
 export const API_PREFIX = '/api/v1';
 
+/** Auth cookies are HTTP-only. Shared so the API and the web proxy cannot drift. */
+export const AUTH_COOKIE_NAMES = {
+  access: 'vc_access',
+  refresh: 'vc_refresh',
+} as const;
+
+/** Development only. The API refuses to start in production with this value. */
+export const DEV_AUTH_ACCESS_SECRET = 'viralclip-dev-only-access-secret-change-me-32';
+
 /** BullMQ queue names. Kept here so producers and workers cannot drift apart. */
 export const QUEUE_NAMES = {
   videoPipeline: 'video-pipeline',
@@ -56,6 +65,18 @@ export interface ReadinessPayload {
     redis: DependencyCheck;
   };
   timestamp: string;
+}
+
+export type UserRole = 'user' | 'admin';
+
+/** Safe user shape returned by the API. Never includes password hashes or tokens. */
+export interface AuthUser {
+  id: number;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  emailVerified: boolean;
+  createdAt: string;
 }
 
 export type ProjectStatus = 'draft' | 'processing' | 'ready' | 'failed';

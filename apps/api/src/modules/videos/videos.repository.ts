@@ -29,6 +29,14 @@ function toVideo(row: VideoRow): Video {
   };
 }
 
+export async function findProjectOwnerId(projectId: number): Promise<number | null> {
+  const [rows] = await pool.execute<Array<RowDataPacket & { user_id: number }>>(
+    `SELECT user_id FROM projects WHERE id = ? LIMIT 1`,
+    [projectId],
+  );
+  return rows[0] ? Number(rows[0].user_id) : null;
+}
+
 export async function insertVideo(input: CreateVideoInput): Promise<Video> {
   const [result] = await pool.execute<ResultSetHeader>(
     `INSERT INTO videos

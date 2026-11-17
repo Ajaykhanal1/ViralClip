@@ -1,7 +1,7 @@
 # ViralClip AI — Architecture
 
-Phase 1 establishes the technical foundation only. Application features (upload, transcription,
-clip selection, rendering) are Phase 2.
+Phase 1 established the technical foundation. Phase 2 adds accounts, sessions, and authorization;
+upload, transcription, clip selection, and rendering remain deferred.
 
 ## System shape
 
@@ -19,7 +19,7 @@ Redis (:6379)
   │
   ▼
 apps/worker (Node.js) ──► services/ai (FastAPI, :8000)
-  │                       transcription / scoring (Phase 2)
+  │                       transcription / scoring (later)
   ├──► FFmpeg / FFprobe (local binary)
   └──► local storage (dev) / S3 (production)
 ```
@@ -37,7 +37,7 @@ persists metadata, and enqueues work.
 | AI engine | `services/ai` | 8000 | Python/FastAPI service for AI tasks |
 | MySQL | Docker Compose | 3306 | Relational metadata, InnoDB, utf8mb4 |
 | Redis | Docker Compose | 6379 | BullMQ queue backend |
-| Shared | `packages/shared` | — | API types, queue names, job payloads, Redis URL parsing |
+| Shared | `packages/shared` | - | API types, auth cookies, queue names, job payloads, Redis URL parsing |
 
 ## Backend: modular monolith
 
@@ -49,9 +49,11 @@ apps/api/src/
 ├── db/               mysql2 pool, migration runner
 ├── http/             error envelope, response helpers
 ├── modules/
+│   ├── auth/         routes → service → repository, cookies, tokens, mail
 │   ├── health/       liveness + readiness
 │   └── videos/       routes → service → repository
 ├── queue/            BullMQ producer + Redis health check
+├── types/            Express request augmentation (`req.user`)
 └── utils/
 ```
 
@@ -76,7 +78,19 @@ All business routes are mounted under `/api/v1` via `API_PREFIX` from `@viralcli
 | GET | `/health` | Unversioned liveness alias for probes, no envelope |
 | GET | `/api/v1/health` | Liveness, success envelope |
 | GET | `/api/v1/health/ready` | MySQL + Redis check, `200` or `503` |
-| POST | `/api/v1/videos` | Register video metadata and enqueue a pipeline job (`202`) |
+| POST | `/api/v1/auth/register` | Create an account, start a session, send a verification email |
+| POST | `/api/v1/auth/login` | Verify credentials and start a session |
+| POST | `/api/v1/auth/refresh` | Rotate the refresh token and issue a new access token |
+| POST | `/api/v1/auth/logout` | Revoke the current refresh token and clear cookies |
+| GET | `/api/v1/auth/me` | Current user (requires auth) |
+| PATCH | `/api/v1/auth/me` | Update display name (requires auth) |
+| PATCH | `/api/v1/auth/me/password` | Change password, revoke all sessions (requires auth) |
+| POST | `/api/v1/auth/forgot-password` | Send a reset link when the email exists |
+| POST | `/api/v1/auth/reset-password` | Consume a single-use reset token |
+| POST | `/api/v1/auth/verify-email` | Consume a single-use verification token |
+| POST | `/api/v1/auth/resend-verification` | Send a new verification email (requires auth) |
+| GET | `/api/v1/auth/users` | Paginated user list (requires `admin`) |
+| POST | `/api/v1/videos` | Register video metadata and enqueue a job (requires auth, checks project ownership, `202`) |
 
 Responses:
 
@@ -100,16 +114,35 @@ Future breaking changes get a new prefix (`/api/v2`). Additive changes stay in `
 - Worker concurrency: `WORKER_CONCURRENCY` (default 2).
 - The worker verifies FFmpeg/FFprobe at startup and warns, rather than crashing, if absent.
 
-The Phase 1 processor is intentionally a logging stub. It returns success without producing clips
-(marked with a `shortcut:` comment in code). Real processing is Phase 2.
+The current processor is intentionally a logging stub. It returns success without producing clips
+(marked with a `shortcut:` comment in code). Real processing is a later phase.
+
+## Authentication and sessions
+
+- Passwords are bcrypt hashes (cost 12). The API never returns hashes or refresh tokens in JSON.
+- Access token: HS256 JWT in the HTTP-only `vc_access` cookie, 15 minutes by default.
+- Refresh token: random opaque token in the HTTP-only `vc_refresh` cookie, 30 days by default. Only
+  its SHA-256 hash is stored. Each refresh rotates the token; reuse of a revoked token revokes every
+  session for that user.
+- Reset and verification tokens are random, single-use, hashed in the database, and expire after
+  1 hour and 24 hours respectively.
+- Cookies are `HttpOnly`, `SameSite=Lax`, `Secure` in production, `Path=/`. `AUTH_COOKIE_DOMAIN`
+  supports a shared parent domain when web and API are hosted separately.
+- `requireAuth` verifies the access cookie (or a Bearer token) on protected routes. `requireRole`
+  gates admin endpoints. `POST /api/v1/videos` verifies the project belongs to the caller.
+- The web app's `proxy.ts` performs an optimistic check for `/settings/*` and signed-in visitors to
+  the auth pages. Every API route still enforces auth; the proxy is not an authorization boundary.
+- Registration and login are rate limited. Duplicate emails return `409 EMAIL_TAKEN`; login
+  compares against a dummy hash for unknown emails to reduce timing leaks.
 
 ## Data ownership
 
-- MySQL stores users, projects, video metadata, clip metadata, and storage keys.
+- MySQL stores users, password hashes, hashed session/recovery tokens, projects, video metadata,
+  clip metadata, and storage keys.
 - **Video binaries are never stored in MySQL.** Only `storage_key` values are stored.
 - Redis holds queue state, not durable business data.
 - Local storage: `LOCAL_STORAGE_DIR` (default `./storage`, gitignored).
-- S3-compatible storage: environment variables are defined; the adapter is Phase 2.
+- S3-compatible storage: environment variables are defined; the adapter is a later phase.
 
 ## Key decisions and trade-offs
 
@@ -123,14 +156,18 @@ The Phase 1 processor is intentionally a logging stub. It returns success withou
 4. **BullMQ.** Retries, backoff, job retention, and concurrency without custom queue code.
 5. **Shared contract package.** Queue names and API types cannot silently drift between producer
    and consumer.
-6. **Fail-open health for the API.** If Redis is down the API still starts and reports `degraded`
+6. **Dual-token sessions.** Short-lived JWT access cookies keep middleware checks cheap, while
+   opaque refresh tokens support server-side revocation, rotation, and theft detection. Cost: a
+   refresh request when the access token expires.
+7. **Fail-open health for the API.** If Redis is down the API still starts and reports `degraded`
    from `/api/v1/health/ready`; queue-producing routes then fail with a clear error.
 
-## Deferred to Phase 2
+## Deferred to later phases
 
 - Upload endpoint and storage adapters (local exists as a path convention, S3 adapter not written)
-- Auth (users/projects currently have no API)
+- Project and clip HTTP APIs (the `projects` table currently has no route)
 - Transcription, clip selection, scoring, rendering, status updates
 - Worker progress reporting and DB status transitions
 - Dockerfiles for application services (Compose currently provisions MySQL + Redis only)
-- Rate limiting, upload scanning, signed URL policy
+- Upload scanning and signed URL policy
+- Distributed rate limiting, email delivery retries, and session/device management

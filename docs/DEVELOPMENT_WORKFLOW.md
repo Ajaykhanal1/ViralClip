@@ -8,7 +8,7 @@
 | npm | >= 10 | workspaces |
 | Python | >= 3.11 | AI engine |
 | Docker + Compose | current | MySQL + Redis (or install them locally) |
-| FFmpeg + FFprobe | current | worker media steps; Phase 1 only checks presence |
+| FFmpeg + FFprobe | current | worker media steps; the current worker only checks presence |
 
 ## First-time setup
 
@@ -153,11 +153,11 @@ Add tests beside the code as `*.test.ts` (Node's test runner, executed with `tsx
 | `docker: command not found` | Install Docker Desktop, or run MySQL/Redis natively |
 | Env change ignored | Restart the process. Next.js inlines `NEXT_PUBLIC_*` at build/start |
 | Port already in use | Change `API_PORT`/`WORKER_HEALTH_PORT`, or stop the other process |
-| FFmpeg warning in worker | Add FFmpeg/FFprobe to `PATH`; Phase 1 continues without them |
+| FFmpeg warning in worker | Add FFmpeg/FFprobe to `PATH`; the current worker continues without them |
 | Migration checksum mismatch | An applied file was edited. Restore it and add a new migration instead |
 
 ## Phase boundary
 
-Phase 1 ends at infrastructure, contracts, and health checks. Do not implement upload,
-transcription, clip scoring, rendering, or auth until Phase 2 starts; the stub worker and the
-`shortcut:` comments mark deliberate gaps.
+Phase 2 ends at accounts, sessions, profile management, and route protection. Upload,
+transcription, project/clip APIs, clip scoring, and rendering are later phases; the stub worker and
+the `shortcut:` comments mark deliberate gaps.

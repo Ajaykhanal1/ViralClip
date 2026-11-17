@@ -5,7 +5,8 @@ Viral Clip/
 ├── apps/
 │   ├── api/                       Express + TypeScript backend (modular monolith)
 │   │   ├── migrations/            Ordered, immutable SQL migrations
-│   │   │   └── 001_init.sql
+│   │   │   ├── 001_init.sql
+│   │   │   └── 002_auth.sql       Users, refresh tokens, verification, resets
 │   │   ├── src/
 │   │   │   ├── app.ts             Express app: logging, CORS, routes, error handling
 │   │   │   ├── server.ts          Process lifecycle, graceful shutdown
@@ -21,10 +22,12 @@ Viral Clip/
 │   │   │   │   ├── errors.ts      AppError, Zod/DB error mapping, 404 handler
 │   │   │   │   └── respond.ts     Success envelope
 │   │   │   ├── modules/
+│   │   │   │   ├── auth/          Routes, service, repository, tokens, cookies, mail, tests
 │   │   │   │   ├── health/        Liveness + readiness routes
-│   │   │   │   └── videos/        Thin Phase 1 slice: persist metadata + enqueue job
+│   │   │   │   └── videos/        Persist metadata + enqueue job, ownership check
 │   │   │   ├── queue/
 │   │   │   │   └── video.queue.ts BullMQ producer, Redis ping
+│   │   │   ├── types/             Express `req.user` augmentation
 │   │   │   └── utils/
 │   │   │       └── with-timeout.ts
 │   │   └── tsconfig.json
@@ -32,14 +35,26 @@ Viral Clip/
 │   ├── web/                       Next.js App Router frontend
 │   │   ├── src/
 │   │   │   ├── app/
+│   │   │   │   ├── (auth)/        Sign in, register, forgot/reset password, verify email
+│   │   │   │   ├── (app)/         Guarded shell + profile settings
 │   │   │   │   ├── layout.tsx
-│   │   │   │   ├── page.tsx       Phase 1 status dashboard
+│   │   │   │   ├── page.tsx       Landing page + status dashboard
 │   │   │   │   └── globals.css    Tailwind v4 + design tokens
 │   │   │   ├── components/
+│   │   │   │   ├── auth/          Auth forms and verification panel
+│   │   │   │   ├── settings/      Profile, password, email, session panels
+│   │   │   │   ├── ui/            Form field, message, submit button
+│   │   │   │   ├── auth-guard.tsx
+│   │   │   │   ├── site-header.tsx
 │   │   │   │   ├── system-status.tsx
 │   │   │   │   └── pipeline-timeline.tsx
-│   │   │   ├── lib/api.ts         Readiness client
-│   │   │   └── store/health-store.ts  Zustand store
+│   │   │   ├── lib/
+│   │   │   │   ├── api.ts         Readiness client
+│   │   │   │   └── auth-api.ts    Auth API client
+│   │   │   ├── store/
+│   │   │   │   ├── auth-store.ts  Session state
+│   │   │   │   └── health-store.ts
+│   │   │   └── proxy.ts           Optimistic auth redirects (Next.js 16 proxy)
 │   │   ├── next.config.ts         Loads repo-root .env, inlines NEXT_PUBLIC_API_URL
 │   │   ├── postcss.config.mjs
 │   │   └── tsconfig.json
@@ -56,7 +71,7 @@ Viral Clip/
 │
 ├── packages/
 │   └── shared/                    Types and constants shared by API, worker, web
-│       └── src/index.ts           API envelopes, queue names, job payloads, Redis URL parser
+│       └── src/index.ts           API envelopes, auth contract, queue names, job payloads
 │
 ├── services/
 │   └── ai/                        Python FastAPI AI engine
@@ -108,6 +123,8 @@ through the root `postinstall` script.
 ## Where new code goes
 
 - New API feature: `apps/api/src/modules/<feature>/` with routes, schemas, service, repository.
+  Protect it with `requireAuth` (and `requireRole` when needed); never trust a client-supplied user
+  ID for ownership.
 - New background job type: add payload + queue name in `packages/shared`, producer in
   `apps/api/src/queue/`, processor in `apps/worker/src/processors/`.
 - New AI capability: `services/ai/app/api/routes/`, business logic under `services/ai/app/`.

@@ -4,15 +4,18 @@ import express, { Router } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { API_PREFIX } from '@viralclip/shared';
-import { corsOrigins } from './config/env.js';
+import { corsOrigins, env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './http/errors.js';
+import { createAuthRouter } from './modules/auth/auth.routes.js';
 import { healthRouter, liveness } from './modules/health/health.routes.js';
 import { videosRouter } from './modules/videos/videos.routes.js';
 
 export const app = express();
 
 app.disable('x-powered-by');
+// One reverse proxy in production (nginx, ALB); trust its forwarded client IP for rate limits.
+app.set('trust proxy', env.NODE_ENV === 'production' ? 1 : false);
 
 app.use(
   pinoHttp({
@@ -52,6 +55,7 @@ app.get('/health', (_req, res) => {
 
 const apiRouter = Router();
 apiRouter.use('/health', healthRouter);
+apiRouter.use('/auth', createAuthRouter());
 apiRouter.use('/videos', videosRouter);
 app.use(API_PREFIX, apiRouter);
 

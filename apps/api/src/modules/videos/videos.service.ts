@@ -1,7 +1,7 @@
 import type { Video } from '@viralclip/shared';
 import { AppError } from '../../http/errors.js';
 import { enqueueVideoPipeline } from '../../queue/video.queue.js';
-import { insertVideo } from './videos.repository.js';
+import { findProjectOwnerId, insertVideo } from './videos.repository.js';
 import type { CreateVideoInput } from './videos.schemas.js';
 
 function isMySqlError(error: unknown, code: string): boolean {
@@ -13,8 +13,15 @@ function isMySqlError(error: unknown, code: string): boolean {
  * HTTP handlers never run FFmpeg or AI work themselves.
  */
 export async function createVideo(
+  userId: number,
   input: CreateVideoInput,
 ): Promise<{ video: Video; jobId: string }> {
+  const ownerId = await findProjectOwnerId(input.projectId);
+  // A missing project and someone else's project look the same: do not leak IDs.
+  if (ownerId !== userId) {
+    throw new AppError(404, 'PROJECT_NOT_FOUND', `Project ${input.projectId} does not exist`);
+  }
+
   let video: Video;
 
   try {
