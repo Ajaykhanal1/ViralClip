@@ -86,6 +86,99 @@ export type SourceVideoType = 'upload' | 'youtube';
 export type SourceVideoStatus = 'pending' | 'awaiting_authorized_source' | 'ready' | 'failed';
 export type UploadSessionStatus = 'pending' | 'uploading' | 'uploaded' | 'failed' | 'canceled' | 'expired';
 
+export type RightsOwnershipType = 'original' | 'licensed' | 'public_domain' | 'unknown';
+export type RightsStatus = 'declared' | 'pending_review' | 'verified' | 'rejected' | 'expired';
+export type RightsSubjectType = 'source_video' | 'music' | 'audio_asset' | 'other';
+export type CopyrightCheckContext = 'publish' | 'render' | 'upload_youtube' | 'manual';
+export type CopyrightCheckResult = 'pass' | 'blocked';
+export type CopyrightClaimStatus = 'open' | 'disputed' | 'resolved' | 'rejected';
+
+export interface ContentLicense {
+  id: number;
+  contentRightsId: number;
+  licenseType: string;
+  licensor: string | null;
+  licenseReference: string | null;
+  permissionDetails: string | null;
+  startsAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface RightsDocument {
+  id: number;
+  contentRightsId: number;
+  originalFilename: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+}
+
+export interface ContentRights {
+  id: number;
+  projectId: number;
+  sourceVideoId: number | null;
+  subjectType: RightsSubjectType;
+  subjectLabel: string;
+  ownershipType: RightsOwnershipType;
+  status: RightsStatus;
+  commercialUse: boolean;
+  derivativeWork: boolean;
+  youtubePublication: boolean;
+  musicRightsConfirmed: boolean;
+  userConfirmed: boolean;
+  confirmedAt: string | null;
+  permissionDetails: string | null;
+  notes: string | null;
+  createdBy: number;
+  updatedBy: number;
+  createdAt: string;
+  updatedAt: string;
+  licenses: ContentLicense[];
+  documents: RightsDocument[];
+}
+
+export interface CopyrightCheck {
+  id: number;
+  projectId: number;
+  sourceVideoId: number | null;
+  context: CopyrightCheckContext;
+  result: CopyrightCheckResult;
+  reasons: string[];
+  checkedBy: number;
+  createdAt: string;
+}
+
+export interface CopyrightClaim {
+  id: number;
+  projectId: number;
+  sourceVideoId: number | null;
+  claimant: string;
+  claimReference: string | null;
+  status: CopyrightClaimStatus;
+  description: string | null;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CopyrightEvent {
+  id: number;
+  projectId: number;
+  sourceVideoId: number | null;
+  contentRightsId: number | null;
+  eventType: string;
+  actorId: number;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface PublishingRightsCheck {
+  allowed: boolean;
+  reasons: string[];
+  checks: Array<{ code: string; ok: boolean; message: string }>;
+}
+
 export interface UploadSession {
   id: number;
   projectId: number;

@@ -7,10 +7,12 @@ import { API_PREFIX } from '@viralclip/shared';
 import { corsOrigins, env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './http/errors.js';
+import { requireAuth } from './modules/auth/auth.middleware.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { healthRouter, liveness } from './modules/health/health.routes.js';
 import { projectsRouter } from './modules/projects/projects.routes.js';
+import { handleRightsDocumentUpload, rightsRouter } from './modules/rights/rights.routes.js';
 import { sourcesRouter } from './modules/sources/sources.routes.js';
 import { handleUploadContent, uploadsRouter } from './modules/uploads/uploads.routes.js';
 import { videosRouter } from './modules/videos/videos.routes.js';
@@ -56,6 +58,10 @@ app.use(cors({ origin: corsOrigins, credentials: true }));
 app.put(`${API_PREFIX}/uploads/sessions/:id/content`, (req, res, next) => {
   Promise.resolve(handleUploadContent(req, res)).catch(next);
 });
+// Rights document upload: raw body (PDF/images) before json parsing.
+app.post(`${API_PREFIX}/rights/:id/documents`, requireAuth, (req, res, next) => {
+  Promise.resolve(handleRightsDocumentUpload(req, res)).catch(next);
+});
 
 app.use(express.json({ limit: '1mb' }));
 
@@ -68,6 +74,7 @@ apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', createAuthRouter());
 apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/projects', projectsRouter);
+apiRouter.use('/rights', rightsRouter);
 apiRouter.use('/sources', sourcesRouter);
 apiRouter.use('/uploads', uploadsRouter);
 apiRouter.use('/videos', videosRouter);
