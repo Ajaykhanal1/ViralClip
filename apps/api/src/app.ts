@@ -8,7 +8,9 @@ import { corsOrigins, env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './http/errors.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
+import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { healthRouter, liveness } from './modules/health/health.routes.js';
+import { projectsRouter } from './modules/projects/projects.routes.js';
 import { videosRouter } from './modules/videos/videos.routes.js';
 
 export const app = express();
@@ -56,6 +58,8 @@ app.get('/health', (_req, res) => {
 const apiRouter = Router();
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', createAuthRouter());
+apiRouter.use('/dashboard', dashboardRouter);
+apiRouter.use('/projects', projectsRouter);
 apiRouter.use('/videos', videosRouter);
 app.use(API_PREFIX, apiRouter);
 

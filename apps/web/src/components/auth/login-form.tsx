@@ -25,7 +25,7 @@ export function LoginForm({ notice }: { notice?: string }) {
 
     try {
       await login(String(data.get('email') ?? ''), String(data.get('password') ?? ''));
-      router.replace('/settings/profile');
+      router.replace('/dashboard');
       router.refresh();
     } catch (caught) {
       setError(errorMessage(caught));

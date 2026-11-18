@@ -38,7 +38,7 @@ export function RegisterForm() {
         displayName: String(data.get('displayName') ?? ''),
         password,
       });
-      router.replace('/settings/profile');
+      router.replace('/dashboard');
       router.refresh();
     } catch (caught) {
       setError(errorMessage(caught));

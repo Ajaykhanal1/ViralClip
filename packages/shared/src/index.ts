@@ -86,10 +86,35 @@ export type ClipStatus = 'pending' | 'processing' | 'ready' | 'failed';
 export interface Project {
   id: number;
   userId: number;
-  title: string;
+  name: string;
+  description: string | null;
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProjectActivity {
+  id: number;
+  projectId: number;
+  userId: number;
+  action: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface ProjectListResult {
+  projects: Project[];
+  total: number;
+}
+
+export interface DashboardStats {
+  totalProjects: number;
+  totalImportedVideos: number;
+  totalGeneratedClips: number;
+  totalRenderedShorts: number;
+  recentProjects: Project[];
+  recentActivities: Array<ProjectActivity & { projectName: string }>;
+  processingJobs: Array<{ type: 'project' | 'video' | 'clip'; id: number; name: string; status: string }>;
 }
 
 export interface Video {
