@@ -11,6 +11,17 @@ const envSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().positive().max(32).default(2),
   WORKER_HEALTH_PORT: z.coerce.number().int().positive().max(65535).default(4001),
   AI_SERVICE_URL: z.url().default('http://localhost:8000'),
+
+  DB_HOST: z.string().default('127.0.0.1'),
+  DB_PORT: z.coerce.number().int().positive().default(3306),
+  DB_USER: z.string().default('viralclip'),
+  DB_PASSWORD: z.string().default(''),
+  DB_NAME: z.string().default('viralclip'),
+  DB_POOL_LIMIT: z.coerce.number().int().positive().default(5),
+
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  LOCAL_STORAGE_DIR: z.string().default('./storage'),
+  PROCESSING_TEMP_DIR: z.string().default('./storage/tmp'),
 });
 
 const parsed = envSchema.safeParse(process.env);

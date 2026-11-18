@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Project, SourceVideo } from '@viralclip/shared';
+import type { ProcessingJob, Project, SourceVideo } from '@viralclip/shared';
 import { Card, EmptyState, Skeleton } from '@/components/ui/card';
 import * as projectsApi from '@/lib/projects-api';
 import * as importsApi from '@/lib/imports-api';
+import * as processingApi from '@/lib/processing-api';
 
 function extractYouTubeIdClient(input: string): string | null {
   try {
@@ -61,6 +62,7 @@ export function ImportsView() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<number | ''>('');
   const [sources, setSources] = useState<SourceVideo[]>([]);
+  const [jobs, setJobs] = useState<ProcessingJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,10 +92,12 @@ export function ImportsView() {
     const id = typeof pid === 'number' ? pid : typeof projectId === 'number' ? projectId : undefined;
     if (!id) {
       setSources([]);
+      setJobs([]);
       return;
     }
-    const res = await importsApi.listSources(id);
-    setSources(res.sources);
+    const [srcRes, jobRes] = await Promise.all([importsApi.listSources(id), processingApi.listJobs({ projectId: id })]);
+    setSources(srcRes.sources);
+    setJobs(jobRes.jobs);
   }
 
   useEffect(() => {
@@ -112,7 +116,20 @@ export function ImportsView() {
 
   useEffect(() => {
     if (typeof projectId === 'number') void loadSources(projectId).catch((e) => setError(importsApi.message(e)));
-    else setSources([]);
+    else { setSources([]); setJobs([]); }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (typeof projectId !== 'number') return;
+    const es = processingApi.openJobsStream(projectId);
+    es.addEventListener('jobs', (ev) => {
+      try {
+        const data = JSON.parse((ev as MessageEvent).data) as { jobs: ProcessingJob[] };
+        setJobs(data.jobs);
+      } catch {}
+    });
+    es.onerror = () => { /* reconnect handled by browser; fallback polling via snapshot events */ };
+    return () => es.close();
   }, [projectId]);
 
   async function submitYouTube(e: React.FormEvent) {
@@ -351,6 +368,40 @@ export function ImportsView() {
         </Card>
       </div>
 
+      <Card title="Processing jobs (live)">
+        {jobs.length === 0 ? (
+          <p className="text-sm text-ink-soft">No processing jobs yet. Uploading a source file queues video ingestion automatically.</p>
+        ) : (
+          <ul className="space-y-3">
+            {jobs.map((j) => (
+              <li key={j.id} className="border border-ink/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium">{j.jobType.replace(/-/g, ' ')} <span className="font-normal text-ink-soft">#{j.id}</span></p>
+                    <span className={`border px-2 py-0.5 text-[10px] uppercase tracking-wide ${
+                      j.status === 'completed' ? 'border-emerald-700/40 text-emerald-800' :
+                      j.status === 'failed' ? 'border-red-700/40 text-red-700' :
+                      j.status === 'cancelled' ? 'border-ink/30 text-ink-soft' :
+                      j.status === 'processing' ? 'border-accent/40 text-accent' : 'border-ink/20 text-ink-soft'
+                    }`}>{j.status}</span>
+                    <span className="text-xs text-ink-soft">source #{j.sourceVideoId} · {j.queueName}</span>
+                  </div>
+                  {(j.status === 'queued' || j.status === 'processing') ? (
+                    <button type="button" onClick={() => void processingApi.cancelJob(j.id).then(() => loadSources(projectId)).catch(() => {})} className="border border-ink/20 px-2 py-1 text-xs hover:border-red-700 hover:text-red-700">Cancel</button>
+                  ) : null}
+                </div>
+                <div className="mt-2">
+                  <div className="flex items-center justify-between text-[11px] text-ink-soft"><span>Progress</span><span>{j.progress}%</span></div>
+                  <div className="mt-1 h-1.5 w-full bg-ink/10"><div className="h-1.5 bg-accent transition-all" style={{ width: `${j.progress}%` }} /></div>
+                </div>
+                {j.errorMessage ? <p className="mt-2 text-xs text-red-700">{j.errorMessage}</p> : null}
+                <p className="mt-1 text-[11px] text-ink-soft">Attempts: {j.attempt}/{j.maxAttempts}{j.completedAt ? ` · completed ${new Date(j.completedAt).toLocaleString()}` : ''}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
       <Card title="Source video library">
         <input
           ref={attachInputRef}
@@ -405,7 +456,7 @@ export function ImportsView() {
                     ) : s.assets[0] ? (
                       <p className="text-xs text-ink-soft">Stored: {s.assets[0].originalFilename}</p>
                     ) : null}
-                    {s.sourceType === 'youtube' && s.status !== 'ready' ? (
+                    {s.sourceType === 'youtube' && s.status === 'awaiting_authorized_source' ? (
                       <button
                         type="button"
                         onClick={() => {

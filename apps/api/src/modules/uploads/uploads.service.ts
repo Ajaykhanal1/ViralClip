@@ -8,6 +8,7 @@ import { probeMedia } from '../../media/probe.js';
 import { isAllowedFilename, isAllowedMime, normalizeMime, validateVideoFile } from '../../lib/upload-validation.js';
 import { ensureParent, fileSize, newStorageKey, removeKey, resolveStoragePath } from '../../storage/local.js';
 import * as sources from '../sources/sources.repository.js';
+import * as processing from '../processing/processing.service.js';
 import * as repo from './uploads.repository.js';
 
 function tokenHash(token: string): string {
@@ -150,7 +151,6 @@ export async function receiveUploadContent(opts: {
         sizeBytes: actualSize,
         ...meta,
       });
-      await sources.markSourceReady(session.userId, sourceId);
     } else {
       sourceId = await sources.createUploadedSource({
         userId: session.userId,
@@ -168,10 +168,15 @@ export async function receiveUploadContent(opts: {
         sizeBytes: actualSize,
         ...meta,
       });
-      await sources.markSourceReady(session.userId, sourceId);
     }
 
     await repo.markStatus(session.id, 'uploaded', { bytesReceived: actualSize, errorMessage: null });
+    try {
+      await processing.enqueueIngestionForSource(session.userId, sourceId);
+    } catch (queueError) {
+      const message = queueError instanceof Error ? queueError.message : 'Failed to queue processing';
+      await sources.markSourceFailed(session.userId, sourceId, message);
+    }
     const source = await sources.findSourceById(session.userId, sourceId);
     return { session: await repo.findSessionById(session.userId, session.id), source };
   } catch (e) {

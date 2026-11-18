@@ -11,12 +11,92 @@ export const DEV_AUTH_ACCESS_SECRET = 'viralclip-dev-only-access-secret-change-m
 
 /** BullMQ queue names. Kept here so producers and workers cannot drift apart. */
 export const QUEUE_NAMES = {
+  videoIngestion: 'video-ingestion',
+  transcription: 'transcription',
+  aiAnalysis: 'ai-analysis',
+  clipGeneration: 'clip-generation',
+  videoRendering: 'video-rendering',
+  youtubeUpload: 'youtube-upload',
+  /** @deprecated use videoIngestion; kept for Phase 1 compatibility */
   videoPipeline: 'video-pipeline',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
-/** Payload for the video processing pipeline. Processing happens in workers only. */
+export type ProcessingJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+
+export interface ProcessingJob {
+  id: number;
+  userId: number;
+  projectId: number;
+  sourceVideoId: number;
+  queueName: string;
+  jobType: string;
+  bullmqJobId: string | null;
+  status: ProcessingJobStatus;
+  progress: number;
+  attempt: number;
+  maxAttempts: number;
+  cancelRequested: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProcessingJobLog {
+  id: number;
+  jobId: number;
+  level: 'debug' | 'info' | 'warn' | 'error';
+  message: string;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ProcessingArtifact {
+  id: number;
+  jobId: number;
+  sourceVideoId: number;
+  kind: string;
+  storageKey: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+/** Base payload for processing jobs. Processing happens in workers only. */
+export interface ProcessingJobPayload {
+  processingJobId: number;
+  userId: number;
+  projectId: number;
+  sourceVideoId: number;
+  storageKey?: string;
+  requestedAt: string;
+}
+
+export interface VideoIngestionJob extends ProcessingJobPayload {
+  queue: 'video-ingestion';
+}
+export interface TranscriptionJob extends ProcessingJobPayload {
+  queue: 'transcription';
+}
+export interface AiAnalysisJob extends ProcessingJobPayload {
+  queue: 'ai-analysis';
+}
+export interface ClipGenerationJob extends ProcessingJobPayload {
+  queue: 'clip-generation';
+}
+export interface VideoRenderingJob extends ProcessingJobPayload {
+  queue: 'video-rendering';
+}
+export interface YoutubeUploadJob extends ProcessingJobPayload {
+  queue: 'youtube-upload';
+}
+
+/** Legacy payload; Phase 1 compatibility. */
 export interface VideoPipelineJob {
   videoId: number;
   projectId: number;
@@ -83,7 +163,14 @@ export type ProjectStatus = 'draft' | 'processing' | 'ready' | 'failed';
 export type VideoStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
 export type ClipStatus = 'pending' | 'processing' | 'ready' | 'failed';
 export type SourceVideoType = 'upload' | 'youtube';
-export type SourceVideoStatus = 'pending' | 'awaiting_authorized_source' | 'ready' | 'failed';
+export type SourceVideoStatus =
+  | 'pending'
+  | 'awaiting_authorized_source'
+  | 'queued'
+  | 'processing'
+  | 'ready'
+  | 'failed'
+  | 'cancelled';
 export type UploadSessionStatus = 'pending' | 'uploading' | 'uploaded' | 'failed' | 'canceled' | 'expired';
 
 export type RightsOwnershipType = 'original' | 'licensed' | 'public_domain' | 'unknown';
@@ -256,7 +343,7 @@ export interface DashboardStats {
   totalRenderedShorts: number;
   recentProjects: Project[];
   recentActivities: Array<ProjectActivity & { projectName: string }>;
-  processingJobs: Array<{ type: 'project' | 'video' | 'clip'; id: number; name: string; status: string }>;
+  processingJobs: Array<{ type: 'project' | 'video' | 'clip' | 'processing'; id: number; name: string; status: string }>;
 }
 
 export interface Video {
