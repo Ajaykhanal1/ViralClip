@@ -82,6 +82,10 @@ export interface VideoIngestionJob extends ProcessingJobPayload {
 }
 export interface TranscriptionJob extends ProcessingJobPayload {
   queue: 'transcription';
+  language?: string | null; // manual selection; null/undefined => detect
+  translateToEnglish?: boolean;
+  regenerate?: boolean;
+  targetTrackId?: number | null;
 }
 export interface AiAnalysisJob extends ProcessingJobPayload {
   queue: 'ai-analysis';
@@ -398,4 +402,80 @@ export function redisConnectionFromUrl(url: string): RedisConnection {
     db,
     ...(parsed.protocol === 'rediss:' ? { tls: {} } : {}),
   };
+}
+
+export type TranscriptStatus = 'processing' | 'completed' | 'failed';
+
+export interface TranscriptWord {
+  startMs: number;
+  endMs: number;
+  text: string;
+  confidence?: number | null;
+}
+
+export interface TranscriptSegment {
+  id: number;
+  transcriptId: number;
+  segmentIndex: number;
+  startMs: number;
+  endMs: number;
+  text: string;
+  speaker: string | null;
+  words: TranscriptWord[] | null;
+}
+
+export interface Transcript {
+  id: number;
+  userId: number;
+  projectId: number;
+  sourceVideoId: number;
+  processingJobId: number | null;
+  language: string | null;
+  detectedLanguage: string | null;
+  model: string | null;
+  durationSeconds: number | null;
+  status: TranscriptStatus;
+  isOriginal: boolean;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  segments?: TranscriptSegment[];
+}
+
+export interface SubtitleStyle {
+  fontFamily?: string;
+  fontSize?: number;
+  textColor?: string;
+  background?: string;
+  outline?: string;
+  position?: 'top' | 'middle' | 'bottom';
+  alignment?: 'left' | 'center' | 'right';
+  highlightedWords?: boolean;
+  activeWordAnimation?: string;
+  [key: string]: unknown;
+}
+
+export interface SubtitleSegment {
+  id: number;
+  trackId: number;
+  segmentIndex: number;
+  startMs: number;
+  endMs: number;
+  text: string;
+  speaker: string | null;
+}
+
+export interface SubtitleTrack {
+  id: number;
+  userId: number;
+  projectId: number;
+  sourceVideoId: number;
+  transcriptId: number | null;
+  name: string;
+  language: string | null;
+  isDefault: boolean;
+  style: SubtitleStyle | null;
+  createdAt: string;
+  updatedAt: string;
+  segments?: SubtitleSegment[];
 }

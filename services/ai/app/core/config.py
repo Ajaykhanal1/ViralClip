@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     node_env: str = "development"
     log_level: str = "info"
     cors_origins: str = "http://localhost:3000"
+    local_storage_dir: str = "./storage"
+    whisper_model: str = "base"
+    whisper_device: str = "cpu"
+    whisper_compute_type: str = "int8"
 
     @property
     def allowed_origins(self) -> list[str]:

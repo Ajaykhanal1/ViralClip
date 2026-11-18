@@ -1,10 +1,44 @@
 import path from 'node:path';
-import type { Job } from 'bullmq';
+import { Queue, type Job } from 'bullmq';
 import type { ProcessingJobPayload } from '@viralclip/shared';
-import { QUEUE_NAMES } from '@viralclip/shared';
+import { QUEUE_NAMES, redisConnectionFromUrl } from '@viralclip/shared';
+import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { extractAudio, generateThumbnail, generateWaveform, probeMedia } from '../media/ffmpeg.js';
 import { appendLog, artifactExists, getSourceAsset, insertArtifact, isCancelled, markJobRunning, setSourceStatus, updateJob } from '../processing/jobs.js';
+import { pool } from '../db/mysql.js';
+
+let transcriptionQueue: Queue<ProcessingJobPayload> | null = null;
+function getTranscriptionQueue() {
+  if (!transcriptionQueue) {
+    transcriptionQueue = new Queue<ProcessingJobPayload>(QUEUE_NAMES.transcription, {
+      connection: { ...redisConnectionFromUrl(env.REDIS_URL), maxRetriesPerRequest: 1 },
+      defaultJobOptions: { attempts: 3, backoff: { type: 'exponential', delay: 5000 }, removeOnComplete: { age: 24 * 3600, count: 1000 }, removeOnFail: { age: 7 * 24 * 3600 } },
+    });
+    transcriptionQueue.on('error', () => {});
+  }
+  return transcriptionQueue;
+}
+
+async function enqueueAutoTranscription(userId: number, projectId: number, sourceVideoId: number) {
+  try {
+    const [existing] = await pool.execute<any[]>(`SELECT id FROM processing_jobs WHERE source_video_id = ? AND queue_name = ? AND status IN ('queued','processing','completed') ORDER BY id DESC LIMIT 1`, [sourceVideoId, QUEUE_NAMES.transcription]);
+    if (existing?.[0]) return;
+    const [res] = await pool.execute<any>(
+      `INSERT INTO processing_jobs (user_id, project_id, source_video_id, queue_name, job_type, status, progress, max_attempts, payload_json)
+       VALUES (?, ?, ?, ?, 'transcription', 'queued', 0, 3, ?)`,
+      [userId, projectId, sourceVideoId, QUEUE_NAMES.transcription, JSON.stringify({ auto: true })],
+    );
+    const id = res.insertId as number;
+    await pool.execute(`INSERT INTO processing_job_logs (job_id, level, message, details_json) VALUES (?, 'info', ?, ?)`, [id, 'Queued automatic transcription', JSON.stringify({ queue: QUEUE_NAMES.transcription })]).catch(() => {});
+    const payload: ProcessingJobPayload = { processingJobId: id, userId, projectId, sourceVideoId, requestedAt: new Date().toISOString() };
+    const q = getTranscriptionQueue();
+    const bull = await q.add(`job-${id}`, payload, { jobId: String(id) });
+    await pool.execute(`UPDATE processing_jobs SET bullmq_job_id = ? WHERE id = ?`, [bull.id ?? String(id), id]);
+  } catch (e) {
+    logger.warn({ err: e, sourceVideoId }, 'failed to auto-enqueue transcription');
+  }
+}
 import { ensureDir, fileSizeByPath, newTempDir, removePathSafe, resolveStoragePath, storeFileToKey } from '../storage/local.js';
 
 export class CancelledError extends Error {
@@ -103,6 +137,7 @@ export async function processVideoIngestion(job: Job<ProcessingJobPayload>): Pro
     await updateJob(processingJobId, { status: 'completed', progress: 100, completed: true, errorCode: null, errorMessage: null });
     await setSourceStatus(userId, sourceVideoId, 'ready');
     await appendLog(processingJobId, 'info', 'Video ingestion completed');
+    await enqueueAutoTranscription(userId, job.data.projectId, sourceVideoId);
     return { ok: true };
   } catch (err) {
     if (err instanceof CancelledError || (await isCancelled(processingJobId))) {

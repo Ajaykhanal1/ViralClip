@@ -6,6 +6,7 @@ import { Card, EmptyState, Skeleton } from '@/components/ui/card';
 import * as projectsApi from '@/lib/projects-api';
 import * as importsApi from '@/lib/imports-api';
 import * as processingApi from '@/lib/processing-api';
+import { SubtitlesEditor } from '@/components/subtitles/subtitles-editor';
 
 function extractYouTubeIdClient(input: string): string | null {
   try {
@@ -63,6 +64,7 @@ export function ImportsView() {
   const [projectId, setProjectId] = useState<number | ''>('');
   const [sources, setSources] = useState<SourceVideo[]>([]);
   const [jobs, setJobs] = useState<ProcessingJob[]>([]);
+  const [subtitlesFor, setSubtitlesFor] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -468,8 +470,16 @@ export function ImportsView() {
                         Upload authorized source
                       </button>
                     ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setSubtitlesFor((cur) => (cur === s.id ? null : s.id))}
+                      className="w-full border border-ink/20 px-3 py-1.5 text-xs font-medium hover:border-accent hover:text-accent"
+                    >
+                      {subtitlesFor === s.id ? 'Hide subtitles' : 'Subtitles'}
+                    </button>
                   </div>
                 </div>
+                {subtitlesFor === s.id ? <SubtitlesEditor sourceId={s.id} sourceReady={s.status === 'ready'} /> : null}
               </li>
             ))}
           </ul>

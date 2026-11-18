@@ -6,7 +6,8 @@ import { closePool } from './db/mysql.js';
 import { startHealthServer } from './health.js';
 import { logMediaToolVersions } from './media/ffmpeg.js';
 import { processVideoIngestion } from './processors/video-ingestion.js';
-import { processAiAnalysis, processClipGeneration, processTranscription, processVideoRendering, processYoutubeUpload } from './processors/stages.js';
+import { processAiAnalysis, processClipGeneration, processVideoRendering, processYoutubeUpload } from './processors/stages.js';
+import { processTranscription } from './processors/transcription.js';
 import { processVideoPipeline } from './processors/video-pipeline.js';
 
 const connection = {

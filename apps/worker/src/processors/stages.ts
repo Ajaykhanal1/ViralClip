@@ -40,7 +40,6 @@ async function processStage(job: Job<ProcessingJobPayload>, stage: string): Prom
   }
 }
 
-export const processTranscription = (job: Job<ProcessingJobPayload>) => processStage(job, 'transcription');
 export const processAiAnalysis = (job: Job<ProcessingJobPayload>) => processStage(job, 'ai-analysis');
 export const processClipGeneration = (job: Job<ProcessingJobPayload>) => processStage(job, 'clip-generation');
 export const processVideoRendering = (job: Job<ProcessingJobPayload>) => processStage(job, 'video-rendering');

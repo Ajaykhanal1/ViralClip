@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
-from app.api.routes import health
+from app.api.routes import health, transcribe
 from app.core.config import settings
 from app.core.logging import configure_logging, logger
 
@@ -109,3 +109,4 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> JSONRespo
 
 
 app.include_router(health.router)
+app.include_router(transcribe.router)
