@@ -11,6 +11,8 @@ import { createAuthRouter } from './modules/auth/auth.routes.js';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { healthRouter, liveness } from './modules/health/health.routes.js';
 import { projectsRouter } from './modules/projects/projects.routes.js';
+import { sourcesRouter } from './modules/sources/sources.routes.js';
+import { handleUploadContent, uploadsRouter } from './modules/uploads/uploads.routes.js';
 import { videosRouter } from './modules/videos/videos.routes.js';
 
 export const app = express();
@@ -49,6 +51,12 @@ app.use((req, res, next) => {
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigins, credentials: true }));
+
+// Signed upload URL endpoint: streams raw body, so it must run before json parsing.
+app.put(`${API_PREFIX}/uploads/sessions/:id/content`, (req, res, next) => {
+  Promise.resolve(handleUploadContent(req, res)).catch(next);
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => {
@@ -60,6 +68,8 @@ apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', createAuthRouter());
 apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/projects', projectsRouter);
+apiRouter.use('/sources', sourcesRouter);
+apiRouter.use('/uploads', uploadsRouter);
 apiRouter.use('/videos', videosRouter);
 app.use(API_PREFIX, apiRouter);
 

@@ -82,6 +82,55 @@ export interface AuthUser {
 export type ProjectStatus = 'draft' | 'processing' | 'ready' | 'failed';
 export type VideoStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
 export type ClipStatus = 'pending' | 'processing' | 'ready' | 'failed';
+export type SourceVideoType = 'upload' | 'youtube';
+export type SourceVideoStatus = 'pending' | 'awaiting_authorized_source' | 'ready' | 'failed';
+export type UploadSessionStatus = 'pending' | 'uploading' | 'uploaded' | 'failed' | 'canceled' | 'expired';
+
+export interface UploadSession {
+  id: number;
+  projectId: number;
+  originalFilename: string;
+  mimeType: string | null;
+  declaredSizeBytes: number | null;
+  status: UploadSessionStatus;
+  bytesReceived: number;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface MediaAsset {
+  id: number;
+  sourceVideoId: number;
+  kind: 'original' | 'authorized_source';
+  storageKey: string;
+  originalFilename: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  durationSeconds: number | null;
+  width: number | null;
+  height: number | null;
+  frameRate: number | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  audioChannels: number | null;
+  audioSampleRate: number | null;
+  createdAt: string;
+}
+
+export interface SourceVideo {
+  id: number;
+  projectId: number;
+  sourceType: SourceVideoType;
+  status: SourceVideoStatus;
+  title: string;
+  originalFilename: string | null;
+  sourceUrl: string | null;
+  youtubeVideoId: string | null;
+  thumbnailUrl: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  assets: MediaAsset[];
+}
 
 export interface Project {
   id: number;

@@ -21,7 +21,10 @@ export async function proxy(request: NextRequest) {
   const signedIn = await hasValidAccessToken(request);
 
   const isProtected =
-    pathname.startsWith('/settings') || pathname.startsWith('/dashboard') || pathname.startsWith('/projects');
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/projects') ||
+    pathname.startsWith('/imports');
   if (isProtected) {
     // The refresh cookie can recover an expired access token in the browser.
     if (signedIn || request.cookies.has(AUTH_COOKIE_NAMES.refresh)) return NextResponse.next();
@@ -39,6 +42,7 @@ export const config = {
     '/forgot-password',
     '/dashboard/:path*',
     '/projects/:path*',
+    '/imports/:path*',
     '/settings/:path*',
   ],
 };

@@ -32,6 +32,12 @@ const envSchema = z.object({
   SMTP_USER: z.string().default(''),
   SMTP_PASSWORD: z.string().default(''),
   SMTP_FROM: z.string().default('ViralClip <no-reply@viralclip.local>'),
+
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  LOCAL_STORAGE_DIR: z.string().default('./storage'),
+  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(1024 * 1024 * 1024),
+  UPLOAD_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(60),
+  YOUTUBE_API_KEY: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);

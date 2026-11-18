@@ -20,7 +20,7 @@ __pycache__/
 .ruff_cache/
 
 # local storage & media
-storage/
+/storage/
 tmp/
 *.mp4
 *.mov
