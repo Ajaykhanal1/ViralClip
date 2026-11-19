@@ -87,8 +87,91 @@ export interface TranscriptionJob extends ProcessingJobPayload {
   regenerate?: boolean;
   targetTrackId?: number | null;
 }
-export interface AiAnalysisJob extends ProcessingJobPayload {
+export interface ClipSignalScores {
+  hookStrength: number;
+  emotionalIntensity: number;
+  interestingStatements: number;
+  storyCompleteness: number;
+  educationalValue: number;
+  dialogueQuality: number;
+  sceneChanges: number;
+  speakerChanges: number;
+  audioEnergy: number;
+  visualInterest: number;
+}
+
+export interface AiAnalysisOptions {
+  minDurationSeconds?: number;
+  maxDurationSeconds?: number;
+  maxClips?: number;
+  weights?: Partial<ClipSignalScores>;
+}
+
+export interface AiAnalysisJob extends ProcessingJobPayload, AiAnalysisOptions {
   queue: 'ai-analysis';
+}
+
+/** Raw suggestion returned by the Python detection service. */
+export interface DetectedClip {
+  candidateId: string;
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+  hookMs: number;
+  transcript: string;
+  suggestedTitle: string;
+  description: string;
+  engagementScore: number;
+  explanation: string;
+  signals: ClipSignalScores;
+  subtitleConfig: SuggestedSubtitleConfig;
+}
+
+export interface SuggestedSubtitleConfig {
+  enabled: boolean;
+  position: 'top' | 'middle' | 'bottom';
+  fontSize: number;
+  textColor: string;
+  backgroundColor: string;
+  outlineColor: string;
+  maxWordsPerLine: number;
+  highlightKeywords: string[];
+}
+
+export interface ClipAnalysisSummary {
+  id: number;
+  analysisKey: string;
+  model: string;
+  sourceDurationMs: number;
+  candidatesGenerated: number;
+  overlappingSkipped: number;
+  duplicateSkipped: number;
+  weights: ClipSignalScores;
+  disclaimer: string;
+  createdAt: string;
+}
+
+export type ClipRecommendationStatus = 'suggested' | 'selected' | 'rejected';
+
+/** Persisted, user-reviewable clip recommendation. */
+export interface ClipRecommendation extends DetectedClip {
+  id: number;
+  userId: number;
+  projectId: number;
+  sourceVideoId: number;
+  analysisId: number;
+  status: ClipRecommendationStatus;
+  startTimestamp: string;
+  endTimestamp: string;
+  hookTimestamp: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClipsForSourceResult {
+  clips: ClipRecommendation[];
+  latestAnalysis: ClipAnalysisSummary | null;
+  latestJob: ProcessingJob | null;
 }
 export interface ClipGenerationJob extends ProcessingJobPayload {
   queue: 'clip-generation';

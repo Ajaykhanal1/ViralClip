@@ -9,6 +9,7 @@ import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './http/errors.js';
 import { requireAuth } from './modules/auth/auth.middleware.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
+import { clipsRouter } from './modules/clips/clips.routes.js';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { healthRouter, liveness } from './modules/health/health.routes.js';
 import { processingRouter } from './modules/processing/processing.routes.js';
@@ -74,6 +75,7 @@ app.get('/health', (_req, res) => {
 const apiRouter = Router();
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', createAuthRouter());
+apiRouter.use('/clips', clipsRouter);
 apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/processing', processingRouter);
 apiRouter.use('/projects', projectsRouter);

@@ -65,8 +65,8 @@ export async function fileSize(key: string): Promise<number> {
   return (await stat(resolveStoragePath(key))).size;
 }
 
-export function readKeyStream(key: string) {
-  return createReadStream(resolveStoragePath(key));
+export function readKeyStream(key: string, options?: { start?: number; end?: number }) {
+  return createReadStream(resolveStoragePath(key), options);
 }
 
 export async function removePath(filePath: string): Promise<void> {

@@ -9,6 +9,7 @@ const nav = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/projects', label: 'Projects' },
   { href: '/imports', label: 'Imports' },
+  { href: '/clips', label: 'Clips' },
   { href: '/rights', label: 'Rights' },
   { href: '/settings/profile', label: 'Settings' },
 ];
