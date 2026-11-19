@@ -1,8 +1,6 @@
-import { QUEUE_NAMES, type EditorTimeline, type EditorTrack, type SubtitleStyle } from '@viralclip/shared';
+import { type EditorTimeline, type EditorTrack, type SubtitleStyle } from '@viralclip/shared';
 import { AppError } from '../../http/errors.js';
-import * as processingRepo from '../processing/processing.repository.js';
-import * as processing from '../processing/processing.service.js';
-import { runPublishingCheck } from '../rights/rights.service.js';
+import * as render from '../render/render.service.js';
 import * as repo from './editor.repository.js';
 import { validateTimeline } from './editor.timeline.js';
 
@@ -147,26 +145,7 @@ export async function removeAsset(userId: number, editId: number, assetId: numbe
 }
 
 export async function requestExport(userId: number, editId: number) {
-  const edit = assertEdit(await repo.findEditById(userId, editId), userId);
-  const draft = await repo.findDraft(userId, edit.draftId);
-  if (!draft) throw new AppError(404, 'DRAFT_NOT_FOUND', 'Shorts draft not found');
-  const rights = await runPublishingCheck(userId, {
-    projectId: edit.projectId,
-    sourceVideoId: edit.sourceVideoId,
-    context: 'render',
-  });
-  if (!rights.allowed) {
-    throw new AppError(403, 'RIGHTS_REQUIRED', `Export blocked by rights check: ${rights.reasons.join(' ')}`, { reasons: rights.reasons });
-  }
-  const active = await processingRepo.findActiveJobForSource(edit.sourceVideoId, QUEUE_NAMES.videoRendering);
-  if (active) throw new AppError(409, 'RENDER_IN_PROGRESS', 'A render job is already active for this source');
-  const job = await processing.createJobForSource({
-    userId,
-    projectId: edit.projectId,
-    sourceVideoId: edit.sourceVideoId,
-    queueName: QUEUE_NAMES.videoRendering,
-    jobType: 'video-rendering',
-    payload: { draftIds: [draft.id], options: {}, editId: edit.id },
-  });
-  return { job };
+  // Tracked render path also validates the saved timeline before enqueueing.
+  const { processingJob } = await render.start(userId, editId);
+  return { job: processingJob };
 }

@@ -207,6 +207,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     try {
       const { job } = await api.requestExport(edit.id);
       set({ notice: `Export queued (job #${job.id})` });
+      window.location.assign(`/render?editId=${edit.id}`);
     } catch (error) {
       set({ error: api.message(error) });
     }

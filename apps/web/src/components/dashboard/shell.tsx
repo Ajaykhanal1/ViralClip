@@ -12,6 +12,7 @@ const nav = [
   { href: '/clips', label: 'Clips' },
   { href: '/shorts', label: 'Shorts' },
   { href: '/editor', label: 'Editor' },
+  { href: '/render', label: 'Render' },
   { href: '/rights', label: 'Rights' },
   { href: '/settings/profile', label: 'Settings' },
 ];

@@ -253,6 +253,7 @@ export interface VideoRenderingJob extends ProcessingJobPayload {
   draftIds: number[];
   options: ShortRenderOptions;
   editId?: number;
+  renderJobId?: number;
 }
 export interface YoutubeUploadJob extends ProcessingJobPayload {
   queue: 'youtube-upload';
@@ -745,4 +746,67 @@ export interface EditorStateResult {
   versions: EditVersion[];
   assets: EditorAsset[];
   draft: ShortDraft;
+}
+
+/** Phase 11 — final render tracking and validated output. */
+export interface RenderJob {
+  id: number;
+  userId: number;
+  editId: number;
+  draftId: number;
+  projectId: number;
+  sourceVideoId: number;
+  processingJobId: number | null;
+  status: ProcessingJobStatus;
+  progress: number;
+  attempt: number;
+  maxAttempts: number;
+  configurationVersion: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+  payload: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  cancelRequested: boolean;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RenderQuality {
+  fileExists: boolean;
+  readable: boolean;
+  correctAspectRatio: boolean;
+  correctDimensions: boolean;
+  audioPresent: boolean;
+  durationValid: boolean;
+  ok: boolean;
+  reasons: string[];
+}
+
+export interface RenderedVideo {
+  id: number;
+  userId: number;
+  renderJobId: number;
+  editId: number;
+  draftId: number;
+  projectId: number;
+  sourceVideoId: number;
+  storageKey: string;
+  thumbnailKey: string | null;
+  container: string;
+  videoCodec: string;
+  audioCodec: string;
+  width: number;
+  height: number;
+  durationMs: number;
+  fileSize: number;
+  configurationVersion: number;
+  quality: RenderQuality;
+  createdAt: string;
+}
+
+export interface RenderStateResult {
+  jobs: RenderJob[];
+  videos: RenderedVideo[];
 }

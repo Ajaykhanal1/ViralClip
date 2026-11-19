@@ -28,6 +28,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/clips') ||
     pathname.startsWith('/shorts') ||
     pathname.startsWith('/editor') ||
+    pathname.startsWith('/render') ||
     pathname.startsWith('/rights');
   if (isProtected) {
     // The refresh cookie can recover an expired access token in the browser.
@@ -50,6 +51,7 @@ export const config = {
     '/clips/:path*',
     '/shorts/:path*',
     '/editor/:path*',
+    '/render/:path*',
     '/rights/:path*',
     '/settings/:path*',
   ],

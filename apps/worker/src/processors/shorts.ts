@@ -4,11 +4,13 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { Job } from 'bullmq';
 import type { RowDataPacket } from 'mysql2/promise';
-import type { ProcessingJobPayload, ShortAudioConfig, ShortFramingMode, ShortTextConfig, SuggestedSubtitleConfig } from '@viralclip/shared';
+import type { ProcessingJobPayload, RenderQuality, ShortAudioConfig, ShortFramingMode, ShortTextConfig, SuggestedSubtitleConfig } from '@viralclip/shared';
 import { env } from '../config/env.js';
 import { pool } from '../db/mysql.js';
 import { detectActiveCrop, probeMedia, runFfmpeg } from '../media/ffmpeg.js';
 import { appendLog, getSourceAsset, insertArtifact, isCancelled, markJobRunning, updateJob } from '../processing/jobs.js';
+import { insertRenderedVideo, isRenderCancelled, updateRenderJob } from '../processing/render-jobs.js';
+import { inspectRenderedFile, validateRenderQuality } from '../processing/quality.js';
 import {
   buildAudioFilter,
   buildClipSrt,
@@ -34,6 +36,8 @@ export interface RenderJobPayload extends ProcessingJobPayload {
   draftIds: number[];
   /** Present when an editor export supplies a structured timeline. */
   editId?: number;
+  /** Present for tracked Phase 11 final renders. */
+  renderJobId?: number;
 }
 
 interface EditRow extends RowDataPacket {
@@ -228,6 +232,8 @@ async function renderDraft(input: {
 
   const version = await finalizeRender({
     processingJobId, draft, version: Number(draft.version), videoPath, thumbnailPath, sourceWidth, sourceHeight,
+    renderJobId: job.data.renderJobId, editId: job.data.editId,
+    expectedDurationMs: Number(draft.duration_ms), expectAudio: !!probe.audioCodec,
   });
   await updateJob(processingJobId, { progress: 10 + Math.round((index / total) * 80) });
   await appendLog(processingJobId, 'info', 'Shorts draft rendered', { draftId: draft.id, version, videoKey: newArtifactKey('shorts', `${draft.id}-v${version}.mp4`) });
@@ -241,16 +247,52 @@ async function finalizeRender(input: {
   thumbnailPath: string;
   sourceWidth: number;
   sourceHeight: number;
+  renderJobId?: number;
+  editId?: number;
+  expectedDurationMs?: number;
+  expectAudio?: boolean;
+  expectedWidth?: number;
+  expectedHeight?: number;
 }): Promise<number> {
   const { draft, version } = input;
+  if (input.renderJobId && !input.editId) throw new Error('Tracked renders require an editor project');
   const videoKey = newArtifactKey('shorts', `${draft.id}-v${version}.mp4`);
   const thumbnailKey = newArtifactKey('shorts', `${draft.id}-v${version}.jpg`);
   await storeFileToKey(input.videoPath, videoKey);
   await storeFileToKey(input.thumbnailPath, thumbnailKey);
 
+  if (input.renderJobId) {
+    // Validate before marking the draft complete so a failed check cannot publish a bad file.
+    const info = await inspectRenderedFile(input.videoPath);
+    const quality: RenderQuality = validateRenderQuality(info, {
+      width: input.expectedWidth ?? Number(draft.width),
+      height: input.expectedHeight ?? Number(draft.height),
+      durationMs: input.expectedDurationMs ?? Number(draft.duration_ms),
+      expectAudio: input.expectAudio ?? true,
+    });
+    if (!quality.ok) throw new Error(`Render quality check failed: ${quality.reasons.join('; ')}`);
+    await insertRenderedVideo({
+      userId: Number(draft.user_id),
+      renderJobId: input.renderJobId,
+      editId: input.editId!,
+      draftId: draft.id,
+      projectId: Number(draft.project_id),
+      sourceVideoId: Number(draft.source_video_id),
+      storageKey: videoKey,
+      thumbnailKey,
+      width: info.width ?? Number(draft.width),
+      height: info.height ?? Number(draft.height),
+      durationMs: Math.round((info.durationSeconds ?? (input.expectedDurationMs ?? Number(draft.duration_ms)) / 1000) * 1000),
+      fileSize: info.fileSize,
+      configurationVersion: version,
+      quality,
+    });
+    await updateRenderJob(input.renderJobId, { progress: 95, result: { storageKey: videoKey, quality } });
+  }
+
   const editData = {
     ...parseJson<Record<string, unknown>>(draft.edit_data_json, {}),
-    output: { storageKey: videoKey, thumbnailKey, width: Number(draft.width), height: Number(draft.height), container: 'mp4' },
+    output: { storageKey: videoKey, thumbnailKey, width: input.expectedWidth ?? Number(draft.width), height: input.expectedHeight ?? Number(draft.height), container: 'mp4' },
     sourceDimensions: { width: input.sourceWidth, height: input.sourceHeight },
   };
   await pool.execute(
@@ -395,6 +437,9 @@ async function renderEditedDraft(input: {
 
   const version = await finalizeRender({
     processingJobId, draft, version: Number(draft.version) + 1, videoPath, thumbnailPath, sourceWidth, sourceHeight,
+    renderJobId: job.data.renderJobId, editId,
+    expectedDurationMs: durationMs, expectAudio: !!probe.audioCodec || audioClips.length > 0,
+    expectedWidth: timeline.settings.width, expectedHeight: timeline.settings.height,
   });
   await updateJob(processingJobId, { progress: 10 + Math.round((index / total) * 80) });
   await appendLog(processingJobId, 'info', 'Edited timeline rendered', { draftId: draft.id, editId, version });
@@ -406,21 +451,29 @@ async function writeOverlay(tempDir: string, file: string, text: string, enable:
 }
 
 export async function processVideoRendering(job: Job<RenderJobPayload>): Promise<{ ok: true; draftIds: number[] }> {
-  const { processingJobId, userId, sourceVideoId, draftIds, editId } = job.data;
+  const { processingJobId, userId, sourceVideoId, draftIds, editId, renderJobId } = job.data;
   const attempt = job.attemptsMade + 1;
   if (!Array.isArray(draftIds) || draftIds.length === 0) throw new Error('No Shorts drafts were supplied');
+  const cancelled = async () => (await isCancelled(processingJobId)) || (!!renderJobId && await isRenderCancelled(renderJobId));
 
-  if (await isCancelled(processingJobId)) {
+  if (await cancelled()) {
     await updateJob(processingJobId, { status: 'cancelled', completed: true, errorMessage: 'Cancelled before start' }).catch(() => {});
+    if (renderJobId) await updateRenderJob(renderJobId, { status: 'cancelled', completed: true, errorMessage: 'Cancelled before start' }).catch(() => {});
     return { ok: true, draftIds: [] };
   }
 
   try {
     await markJobRunning(processingJobId, attempt);
-    await appendLog(processingJobId, 'info', 'Shorts rendering started', { attempt, drafts: draftIds.length });
+    if (renderJobId) {
+      await updateRenderJob(renderJobId, {
+        status: 'processing', progress: 5, attempt, started: true,
+        errorCode: null, errorMessage: null, result: null,
+      });
+    }
+    await appendLog(processingJobId, 'info', 'Shorts rendering started', { attempt, drafts: draftIds.length, renderJobId });
     const rendered: number[] = [];
     for (const [index, draftId] of draftIds.entries()) {
-      if (await isCancelled(processingJobId)) throw new CancelledError();
+      if (await cancelled()) throw new CancelledError();
       const draft = await getDraft(userId, draftId);
       if (!draft || draft.user_id !== userId || draft.source_video_id !== sourceVideoId) {
         throw new Error(`Shorts draft ${draftId} not found for this source`);
@@ -431,18 +484,27 @@ export async function processVideoRendering(job: Job<RenderJobPayload>): Promise
         await renderDraft({ job, draft, index, total: draftIds.length });
       }
       rendered.push(draftId);
+      const progress = 10 + Math.round(((index + 1) / draftIds.length) * 80);
+      if (renderJobId) await updateRenderJob(renderJobId, { progress: Math.min(95, progress) });
     }
 
     await updateJob(processingJobId, {
       status: 'completed', progress: 100, completed: true, errorCode: null, errorMessage: null,
       result: { draftIds: rendered },
     });
+    if (renderJobId) {
+      await updateRenderJob(renderJobId, {
+        status: 'completed', progress: 100, completed: true, errorCode: null, errorMessage: null,
+        result: { draftIds: rendered },
+      });
+    }
     await appendLog(processingJobId, 'info', 'Shorts rendering completed', { draftIds: rendered });
     return { ok: true, draftIds: rendered };
   } catch (error) {
-    if (error instanceof CancelledError || (await isCancelled(processingJobId))) {
+    if (error instanceof CancelledError || (await cancelled())) {
       await pool.execute(`UPDATE shorts_drafts SET status = 'cancelled' WHERE id IN (${draftIds.map(() => '?').join(',')}) AND status IN ('queued','processing')`, draftIds).catch(() => {});
       await updateJob(processingJobId, { status: 'cancelled', completed: true, errorMessage: 'Processing cancelled' }).catch(() => {});
+      if (renderJobId) await updateRenderJob(renderJobId, { status: 'cancelled', completed: true, errorMessage: 'Processing cancelled' }).catch(() => {});
       return { ok: true, draftIds: [] };
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -456,6 +518,15 @@ export async function processVideoRendering(job: Job<RenderJobPayload>): Promise
       completed: finalAttempt,
       result: null,
     }).catch(() => {});
+    if (renderJobId) {
+      await updateRenderJob(renderJobId, {
+        status: finalAttempt ? 'failed' : 'queued',
+        errorCode: 'RENDER_FAILED',
+        errorMessage: message,
+        completed: finalAttempt,
+        result: null,
+      }).catch(() => {});
+    }
     throw error;
   }
 }
