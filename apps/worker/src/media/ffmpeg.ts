@@ -81,6 +81,40 @@ export async function generateThumbnail(inputPath: string, outputPath: string): 
   }
 }
 
+export async function runFfmpeg(args: string[], options: { cwd?: string; timeoutMs?: number } = {}): Promise<void> {
+  await execFileAsync('ffmpeg', args, {
+    cwd: options.cwd,
+    timeout: options.timeoutMs,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+}
+
+/** Best-effort active-region X offset (-1..1); empty when cropdetect is unavailable. */
+export async function detectActiveCrop(
+  inputPath: string,
+  startMs: number,
+  durationMs: number,
+  sourceWidth: number,
+  timeoutMs: number,
+): Promise<number | null> {
+  try {
+    const { stderr } = await execFileAsync('ffmpeg', [
+      '-y', '-ss', String(startMs / 1000), '-i', inputPath, '-t', String(durationMs / 1000),
+      '-vf', 'cropdetect=limit=24:round=16:reset=0', '-an', '-f', 'null', '-',
+    ], { maxBuffer: 16 * 1024 * 1024, timeout: timeoutMs });
+    const crops = [...stderr.matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+    const last = crops.at(-1);
+    if (!last) return null;
+    const x = Number(last[3]);
+    const w = Number(last[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(w) || w <= 0) return null;
+    const center = x + w / 2;
+    return (center - sourceWidth / 2) / Math.max(1, sourceWidth / 2);
+  } catch {
+    return null;
+  }
+}
+
 export async function generateWaveform(inputPath: string, outputPath: string): Promise<void> {
   await execFileAsync('ffmpeg', [
     '-y', '-i', inputPath,

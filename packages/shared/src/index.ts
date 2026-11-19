@@ -176,8 +176,82 @@ export interface ClipsForSourceResult {
 export interface ClipGenerationJob extends ProcessingJobPayload {
   queue: 'clip-generation';
 }
+export type ShortFramingMode = 'smart' | 'center' | 'face' | 'speaker';
+
+/** User-adjustable Shorts render settings. Values are clamped on the server. */
+export interface ShortRenderOptions {
+  framing?: ShortFramingMode;
+  /** Normalized crop offset from center, -1..1 on each axis. */
+  cropX?: number;
+  cropY?: number;
+  width?: number;
+  height?: number;
+  durationSeconds?: number;
+  subtitleEnabled?: boolean;
+  introText?: string;
+  outroText?: string;
+  introSeconds?: number;
+  outroSeconds?: number;
+  volume?: number;
+  fadeInSeconds?: number;
+  fadeOutSeconds?: number;
+}
+
+export interface ShortAudioConfig {
+  volume: number;
+  fadeInSeconds: number;
+  fadeOutSeconds: number;
+}
+
+export interface ShortTextConfig {
+  text: string;
+  seconds: number;
+}
+
+/** A generated, editable 9:16 draft. Source media is never modified. */
+export interface ShortDraft {
+  id: number;
+  userId: number;
+  projectId: number;
+  sourceVideoId: number;
+  recommendationId: number | null;
+  analysisId: number | null;
+  version: number;
+  status: ProcessingJobStatus;
+  selected: boolean;
+  title: string;
+  description: string;
+  startMs: number;
+  endMs: number;
+  hookMs: number;
+  durationMs: number;
+  width: number;
+  height: number;
+  framing: ShortFramingMode;
+  cropX: number;
+  cropY: number;
+  subtitleConfig: SuggestedSubtitleConfig | null;
+  audioConfig: ShortAudioConfig;
+  intro: ShortTextConfig;
+  outro: ShortTextConfig;
+  /** Structured, non-destructive editing data persisted with the draft. */
+  editData: Record<string, unknown>;
+  storageKey: string | null;
+  thumbnailKey: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShortsForSourceResult {
+  drafts: ShortDraft[];
+  latestJob: ProcessingJob | null;
+}
+
 export interface VideoRenderingJob extends ProcessingJobPayload {
   queue: 'video-rendering';
+  draftIds: number[];
+  options: ShortRenderOptions;
 }
 export interface YoutubeUploadJob extends ProcessingJobPayload {
   queue: 'youtube-upload';

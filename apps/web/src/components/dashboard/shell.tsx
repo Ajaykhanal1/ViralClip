@@ -10,6 +10,7 @@ const nav = [
   { href: '/projects', label: 'Projects' },
   { href: '/imports', label: 'Imports' },
   { href: '/clips', label: 'Clips' },
+  { href: '/shorts', label: 'Shorts' },
   { href: '/rights', label: 'Rights' },
   { href: '/settings/profile', label: 'Settings' },
 ];
