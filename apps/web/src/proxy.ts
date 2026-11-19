@@ -29,7 +29,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/shorts') ||
     pathname.startsWith('/editor') ||
     pathname.startsWith('/render') ||
-    pathname.startsWith('/rights');
+    pathname.startsWith('/rights') ||
+    pathname.startsWith('/youtube');
   if (isProtected) {
     // The refresh cookie can recover an expired access token in the browser.
     if (signedIn || request.cookies.has(AUTH_COOKIE_NAMES.refresh)) return NextResponse.next();
@@ -53,6 +54,7 @@ export const config = {
     '/editor/:path*',
     '/render/:path*',
     '/rights/:path*',
+    '/youtube/:path*',
     '/settings/:path*',
   ],
 };

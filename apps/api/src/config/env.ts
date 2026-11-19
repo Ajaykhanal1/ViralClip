@@ -38,6 +38,10 @@ const envSchema = z.object({
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(1024 * 1024 * 1024),
   UPLOAD_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(60),
   YOUTUBE_API_KEY: z.string().default(''),
+  GOOGLE_CLIENT_ID: z.string().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().default(''),
+  GOOGLE_REDIRECT_URI: z.string().default('http://localhost:4000/api/v1/youtube/oauth/callback'),
+  YOUTUBE_TOKEN_ENCRYPTION_KEY: z.string().min(16).default('viralclip-dev-token-key-change-me'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -52,6 +56,14 @@ if (
   parsed.data.AUTH_ACCESS_SECRET === DEV_AUTH_ACCESS_SECRET
 ) {
   throw new Error('AUTH_ACCESS_SECRET must be set to a unique value in production');
+}
+if (parsed.data.NODE_ENV === 'production') {
+  if (!parsed.data.GOOGLE_CLIENT_ID || !parsed.data.GOOGLE_CLIENT_SECRET) {
+    throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in production');
+  }
+  if (parsed.data.YOUTUBE_TOKEN_ENCRYPTION_KEY === 'viralclip-dev-token-key-change-me') {
+    throw new Error('YOUTUBE_TOKEN_ENCRYPTION_KEY must be unique in production');
+  }
 }
 
 export const env = parsed.data;

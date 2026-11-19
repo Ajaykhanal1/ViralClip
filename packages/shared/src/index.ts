@@ -1,4 +1,5 @@
 export const API_PREFIX = '/api/v1';
+export * from './rights.js';
 
 /** Auth cookies are HTTP-only. Shared so the API and the web proxy cannot drift. */
 export const AUTH_COOKIE_NAMES = {
@@ -257,6 +258,9 @@ export interface VideoRenderingJob extends ProcessingJobPayload {
 }
 export interface YoutubeUploadJob extends ProcessingJobPayload {
   queue: 'youtube-upload';
+  uploadId: number;
+  youtubeAccountId: number;
+  renderedVideoId: number;
 }
 
 /** Legacy payload; Phase 1 compatibility. */
@@ -809,4 +813,66 @@ export interface RenderedVideo {
 export interface RenderStateResult {
   jobs: RenderJob[];
   videos: RenderedVideo[];
+}
+
+/** Phase 12 — connected YouTube channel and published Shorts. Tokens are never part of these contracts. */
+export type YouTubeAccountStatus = 'connected' | 'disconnected' | 'revoked' | 'expired';
+
+export interface YouTubeAccount {
+  id: number;
+  userId: number;
+  channelId: string;
+  channelTitle: string;
+  channelHandle: string | null;
+  thumbnailUrl: string | null;
+  scopes: string[];
+  tokenExpiresAt: string | null;
+  status: YouTubeAccountStatus;
+  connectedAt: string;
+  updatedAt: string;
+}
+
+export type YouTubeVisibility = 'public' | 'private' | 'unlisted';
+export type YouTubeUploadStatus = 'queued' | 'uploading' | 'completed' | 'failed' | 'cancelled';
+
+export interface YouTubeUpload {
+  id: number;
+  userId: number;
+  youtubeAccountId: number;
+  renderedVideoId: number;
+  processingJobId: number | null;
+  projectId: number;
+  sourceVideoId: number;
+  draftId: number;
+  status: YouTubeUploadStatus;
+  progress: number;
+  title: string;
+  description: string;
+  tags: string[];
+  visibility: YouTubeVisibility;
+  rightsConfirmed: boolean;
+  videoId: string | null;
+  videoUrl: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  attempt: number;
+  maxAttempts: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface YouTubeStateResult {
+  account: YouTubeAccount | null;
+  uploads: YouTubeUpload[];
+}
+
+export interface YouTubeUploadInput {
+  renderedVideoId: number;
+  title: string;
+  description: string;
+  tags: string[];
+  visibility: YouTubeVisibility;
+  rightsConfirmed: true;
 }

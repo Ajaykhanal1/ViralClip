@@ -23,6 +23,10 @@ const envSchema = z.object({
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   LOCAL_STORAGE_DIR: z.string().default('./storage'),
   PROCESSING_TEMP_DIR: z.string().default('./storage/tmp'),
+
+  GOOGLE_CLIENT_ID: z.string().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().default(''),
+  YOUTUBE_TOKEN_ENCRYPTION_KEY: z.string().min(16).default('viralclip-dev-token-key-change-me'),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -1,5 +1,4 @@
-import type { ContentRights, PublishingRightsCheck } from '@viralclip/shared';
-import { env } from '../../config/env.js';
+import { evaluatePublishingRights, type PublishingRightsCheck } from '@viralclip/shared';
 import { AppError } from '../../http/errors.js';
 import { newStorageKey, removeKey, resolveStoragePath, ensureParent } from '../../storage/local.js';
 import { createWriteStream } from 'node:fs';
@@ -24,37 +23,7 @@ async function assertSource(userId: number, sourceVideoId: number, projectId?: n
   return info;
 }
 
-function isExpiredDate(dateStr: string | null | undefined): boolean {
-  if (!dateStr) return false;
-  const today = new Date().toISOString().slice(0, 10);
-  return dateStr < today;
-}
-
-function rightsEffectiveProblems(r: ContentRights, requirePermissions: boolean): string[] {
-  const problems: string[] = [];
-  if (r.status === 'rejected') problems.push(`${label(r)}: rights declaration rejected.`);
-  if (r.status === 'expired') problems.push(`${label(r)}: rights declaration expired.`);
-  if (r.ownershipType === 'unknown') {
-    problems.push(`${label(r)}: ownership is unknown and not authorized for publishing.`);
-  }
-  if (!r.userConfirmed) problems.push(`${label(r)}: rights declaration not confirmed by user.`);
-  if (requirePermissions) {
-    if (!r.derivativeWork) problems.push(`${label(r)}: derivative-work permission not granted.`);
-    if (!r.youtubePublication) problems.push(`${label(r)}: YouTube publication permission not granted.`);
-    if (!r.commercialUse) problems.push(`${label(r)}: commercial-use permission not granted.`);
-  }
-  for (const lic of r.licenses) {
-    if (isExpiredDate(lic.expiresAt)) problems.push(`${label(r)}: license "${lic.licenseType}" is expired.`);
-  }
-  if (r.ownershipType === 'licensed' && r.licenses.length === 0) {
-    problems.push(`${label(r)}: licensed content requires license information.`);
-  }
-  return problems;
-}
-
-function label(r: ContentRights): string {
-  return `${r.subjectType === 'source_video' ? 'Source' : 'Asset'} "${r.subjectLabel}"`;
-}
+export { evaluatePublishingRights } from '@viralclip/shared';
 
 export async function createRightsDeclaration(userId: number, input: CreateRights) {
   await assertProject(userId, input.projectId);
@@ -199,56 +168,6 @@ export async function getRights(userId: number, id: number) {
   const rights = await repo.findRightsById(userId, id);
   if (!rights) throw new AppError(404, 'RIGHTS_NOT_FOUND', 'Rights declaration not found');
   return rights;
-}
-
-export function evaluatePublishingRights(
-  rights: ContentRights[],
-  input: { sourceVideoId?: number; context: 'publish' | 'render' | 'upload_youtube' | 'manual' },
-): PublishingRightsCheck {
-  const reasons: string[] = [];
-  const checks: Array<{ code: string; ok: boolean; message: string }> = [];
-
-  if (rights.length === 0) {
-    reasons.push('No rights declaration found. Declare source ownership and required permissions before publishing.');
-  }
-
-  // Source rights must be declared for relevant content. Unknown ownership is never treated as authorized.
-  const relevant = input.sourceVideoId ? rights.filter((r) => r.sourceVideoId === input.sourceVideoId || r.sourceVideoId == null) : rights;
-  const sourceDecls = relevant.filter((r) => r.subjectType === 'source_video');
-  if (input.sourceVideoId && sourceDecls.length === 0) {
-    reasons.push('Source rights are not declared for this video.');
-  }
-
-  const requirePerms = input.context === 'publish' || input.context === 'upload_youtube' || input.context === 'render';
-  for (const r of relevant) {
-    reasons.push(...rightsEffectiveProblems(r, requirePerms));
-  }
-
-  // Music/additional assets must have appropriate rights when declared/used.
-  const music = relevant.filter((r) => r.subjectType === 'music' || r.subjectType === 'audio_asset');
-  for (const m of music) {
-    if (!m.musicRightsConfirmed && m.ownershipType !== 'original') {
-      reasons.push(`${label(m)}: music/audio rights not confirmed.`);
-    }
-  }
-
-  const declaredOk = relevant.length > 0;
-  checks.push({ code: 'rights_declared', ok: declaredOk && reasons.filter((r) => r.includes('not declared')).length === 0, message: declaredOk ? 'Rights declarations present.' : 'Rights declaration is missing.' });
-  checks.push({ code: 'no_unknown_or_rejected', ok: !reasons.some((r) => r.includes('unknown') || r.includes('rejected')), message: 'Unknown or rejected rights block publishing.' });
-  checks.push({ code: 'licenses_valid', ok: !reasons.some((r) => r.includes('license')), message: 'Required licenses must be present and unexpired.' });
-  checks.push({ code: 'user_confirmed', ok: !reasons.some((r) => r.includes('not confirmed by user')), message: 'User must confirm the rights declaration.' });
-  checks.push({ code: 'permissions', ok: !reasons.some((r) => r.includes('permission')), message: 'Commercial, derivative, and YouTube permissions must be granted as required.' });
-
-  const uniqueReasons = Array.from(new Set(reasons));
-  const allowed = uniqueReasons.length === 0;
-  if (!allowed) {
-    return {
-      allowed: false,
-      reasons: uniqueReasons,
-      checks: checks.map((c) => ({ ...c, ok: c.ok && uniqueReasons.length === 0 ? c.ok : c.ok })),
-    };
-  }
-  return { allowed: true, reasons: [], checks };
 }
 
 export async function runPublishingCheck(

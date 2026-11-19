@@ -22,6 +22,7 @@ import { handleRightsDocumentUpload, rightsRouter } from './modules/rights/right
 import { sourcesRouter } from './modules/sources/sources.routes.js';
 import { handleUploadContent, uploadsRouter } from './modules/uploads/uploads.routes.js';
 import { videosRouter } from './modules/videos/videos.routes.js';
+import { youtubeRouter } from './modules/youtube/youtube.routes.js';
 
 export const app = express();
 
@@ -90,6 +91,7 @@ apiRouter.use('/sources', sourcesRouter);
 apiRouter.use('/subtitles', subtitlesRouter);
 apiRouter.use('/uploads', uploadsRouter);
 apiRouter.use('/videos', videosRouter);
+apiRouter.use('/youtube', youtubeRouter);
 app.use(API_PREFIX, apiRouter);
 
 app.use(notFoundHandler);

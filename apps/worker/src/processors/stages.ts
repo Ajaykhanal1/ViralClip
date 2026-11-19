@@ -161,4 +161,4 @@ export async function processAiAnalysis(job: Job<ProcessingJobPayload>): Promise
 
 export const processClipGeneration = (job: Job<ProcessingJobPayload>) => processStage(job, 'clip-generation');
 export { processVideoRendering } from './shorts.js';
-export const processYoutubeUpload = (job: Job<ProcessingJobPayload>) => processStage(job, 'youtube-upload');
+export { processYoutubeUpload } from './youtube-upload.js';
