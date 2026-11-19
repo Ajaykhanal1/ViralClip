@@ -9,6 +9,7 @@ import { env } from '../config/env.js';
 import { pool } from '../db/mysql.js';
 import { detectActiveCrop, probeMedia, runFfmpeg } from '../media/ffmpeg.js';
 import { appendLog, getSourceAsset, insertArtifact, isCancelled, markJobRunning, updateJob } from '../processing/jobs.js';
+import { emitEvent } from '../processing/notifications.js';
 import { insertRenderedVideo, isRenderCancelled, updateRenderJob } from '../processing/render-jobs.js';
 import { inspectRenderedFile, validateRenderQuality } from '../processing/quality.js';
 import {
@@ -499,6 +500,15 @@ export async function processVideoRendering(job: Job<RenderJobPayload>): Promise
       });
     }
     await appendLog(processingJobId, 'info', 'Shorts rendering completed', { draftIds: rendered });
+    await emitEvent({
+      userId,
+      type: 'render_completed',
+      title: 'Render completed',
+      message: `${rendered.length} Short${rendered.length === 1 ? '' : 's'} finished rendering.`,
+      severity: 'success',
+      data: { projectId: job.data.projectId, sourceVideoId, processingJobId, renderJobId: renderJobId ?? null, draftIds: rendered },
+      usage: { metric: 'renderedVideos', amount: rendered.length, key: `render:${processingJobId}` },
+    });
     return { ok: true, draftIds: rendered };
   } catch (error) {
     if (error instanceof CancelledError || (await cancelled())) {
@@ -526,6 +536,16 @@ export async function processVideoRendering(job: Job<RenderJobPayload>): Promise
         completed: finalAttempt,
         result: null,
       }).catch(() => {});
+    }
+    if (finalAttempt) {
+      await emitEvent({
+        userId,
+        type: 'render_failed',
+        title: 'Render failed',
+        message: `Rendering failed for source video #${sourceVideoId}: ${message}`,
+        severity: 'error',
+        data: { projectId: job.data.projectId, sourceVideoId, processingJobId, renderJobId: renderJobId ?? null, error: message },
+      });
     }
     throw error;
   }

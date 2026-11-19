@@ -3,6 +3,7 @@ import type { AiAnalysisOptions, ProcessingJobPayload } from '@viralclip/shared'
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { appendLog, getSourceAsset, isCancelled, markJobRunning, setSourceStatus, updateJob } from '../processing/jobs.js';
+import { emitEvent } from '../processing/notifications.js';
 import { getAudioArtifactKey, getSourceDurationSeconds } from '../processing/transcripts.js';
 import { getLatestTranscriptForAnalysis, normalizeClips, persistAnalysis, type AiAnalysis } from '../processing/clips.js';
 
@@ -141,6 +142,26 @@ export async function processAiAnalysis(job: Job<ProcessingJobPayload>): Promise
       result: { analysisId, clipCount: clips.length, model: ai.model },
     });
     await appendLog(processingJobId, 'info', 'AI recommendations stored', { analysisId, clipCount: clips.length });
+    await Promise.all([
+      emitEvent({
+        userId,
+        type: 'ai_analysis_completed',
+        title: 'AI analysis completed',
+        message: `${clips.length} clip recommendations are ready for source video #${sourceVideoId}.`,
+        severity: 'success',
+        data: { projectId, sourceVideoId, analysisId, processingJobId, model: ai.model },
+        usage: { metric: 'aiUsage', amount: 1, key: `ai:${processingJobId}` },
+      }),
+      emitEvent({
+        userId,
+        type: 'clips_generated',
+        title: 'Clips generated',
+        message: `${clips.length} clips were generated for source video #${sourceVideoId}.`,
+        severity: 'success',
+        data: { projectId, sourceVideoId, analysisId, clipCount: clips.length },
+        usage: { metric: 'generatedClips', amount: clips.length, key: `clips:${analysisId}` },
+      }),
+    ]);
     return { ok: true, analysisId };
   } catch (err) {
     if (err instanceof CancelledError || (await isCancelled(processingJobId))) {

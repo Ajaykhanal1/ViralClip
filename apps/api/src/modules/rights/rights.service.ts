@@ -1,6 +1,7 @@
 import { evaluatePublishingRights, type PublishingRightsCheck } from '@viralclip/shared';
 import { AppError } from '../../http/errors.js';
 import { newStorageKey, removeKey, resolveStoragePath, ensureParent } from '../../storage/local.js';
+import * as notifications from '../notifications/notifications.service.js';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
@@ -180,6 +181,15 @@ export async function runPublishingCheck(
   const result = evaluatePublishingRights(rights, { sourceVideoId: input.sourceVideoId, context: input.context });
   await repo.insertCheck({ userId, projectId: input.projectId, sourceVideoId: input.sourceVideoId ?? null, context: input.context, result: result.allowed ? 'pass' : 'blocked', reasons: result.reasons, checkedBy: userId });
   await repo.insertEvent({ userId, projectId: input.projectId, sourceVideoId: input.sourceVideoId ?? null, eventType: 'rights_check', actorId: userId, details: { context: input.context, allowed: result.allowed, reasons: result.reasons } });
+  if (!result.allowed) {
+    await notifications.notify(userId, {
+      type: 'copyright_review_required',
+      title: 'Copyright review required',
+      message: `Publishing was blocked for project ${input.projectId}: ${result.reasons.join(' ')}`,
+      severity: 'warning',
+      data: { projectId: input.projectId, sourceVideoId: input.sourceVideoId ?? null, reasons: result.reasons },
+    }).catch(() => {});
+  }
   return result;
 }
 

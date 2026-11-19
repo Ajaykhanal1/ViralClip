@@ -876,3 +876,96 @@ export interface YouTubeUploadInput {
   visibility: YouTubeVisibility;
   rightsConfirmed: true;
 }
+
+/** Phase 13 — notifications, usage, and configurable plans. */
+
+export type NotificationType =
+  | 'video_upload_completed'
+  | 'video_processing_started'
+  | 'ai_analysis_completed'
+  | 'clips_generated'
+  | 'render_completed'
+  | 'render_failed'
+  | 'youtube_upload_completed'
+  | 'youtube_upload_failed'
+  | 'copyright_review_required';
+
+export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
+
+export interface Notification {
+  id: number;
+  userId: number;
+  type: NotificationType;
+  title: string;
+  message: string;
+  severity: NotificationSeverity;
+  data: Record<string, unknown> | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationStateResult {
+  notifications: Notification[];
+  unreadCount: number;
+}
+
+export type UsageMetric =
+  | 'uploadedVideos'
+  | 'uploadedStorageBytes'
+  | 'processingMinutes'
+  | 'generatedClips'
+  | 'renderedVideos'
+  | 'aiUsage'
+  | 'youtubeUploads';
+
+/** null means unlimited. Limits are configurable per plan in the database. */
+export type PlanLimits = Record<UsageMetric, number | null>;
+
+export const USAGE_METRICS: readonly UsageMetric[] = [
+  'uploadedVideos',
+  'uploadedStorageBytes',
+  'processingMinutes',
+  'generatedClips',
+  'renderedVideos',
+  'aiUsage',
+  'youtubeUploads',
+];
+
+export interface SubscriptionPlan {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  priceMonthlyCents: number;
+  currency: string;
+  limits: PlanLimits;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSubscription {
+  id: number;
+  userId: number;
+  planId: number;
+  status: 'active' | 'cancelled' | 'expired';
+  emailNotifications: boolean;
+  startedAt: string;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UsageSummary {
+  metric: UsageMetric;
+  used: number;
+  limit: number | null;
+  percentage: number | null;
+}
+
+export interface SubscriptionStateResult {
+  plans: SubscriptionPlan[];
+  subscription: UserSubscription;
+  usage: UsageSummary[];
+}

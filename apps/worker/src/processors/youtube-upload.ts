@@ -5,6 +5,7 @@ import type { YoutubeUploadJob } from '@viralclip/shared';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { appendLog, isCancelled, markJobRunning, updateJob } from '../processing/jobs.js';
+import { emitEvent } from '../processing/notifications.js';
 import {
   checkRights,
   getUploadContext,
@@ -270,6 +271,15 @@ export async function processYoutubeUpload(job: Job<YoutubeUploadJob>): Promise<
       result: { uploadId, videoId, videoUrl },
     });
     await appendLog(processingJobId, 'info', 'YouTube upload completed', { uploadId, videoId });
+    await emitEvent({
+      userId,
+      type: 'youtube_upload_completed',
+      title: 'YouTube upload completed',
+      message: `Your Short is live on YouTube: ${videoUrl}`,
+      severity: 'success',
+      data: { projectId: job.data.projectId, sourceVideoId, uploadId, videoId, videoUrl },
+      usage: { metric: 'youtubeUploads', amount: 1, key: `youtube-upload:${uploadId}` },
+    });
     return { ok: true, videoId };
   } catch (error) {
     if (error instanceof CancelledError || (await cancelled())) {
@@ -293,6 +303,14 @@ export async function processYoutubeUpload(job: Job<YoutubeUploadJob>): Promise<
       await updateJob(processingJobId, {
         status: 'failed', errorCode: code, errorMessage: message, completed: true, result: null,
       }).catch(() => {});
+      await emitEvent({
+        userId,
+        type: 'youtube_upload_failed',
+        title: 'YouTube upload failed',
+        message: `Upload #${uploadId} failed: ${message}`,
+        severity: 'error',
+        data: { projectId: job.data.projectId, sourceVideoId, uploadId, errorCode: code, error: message },
+      });
     } else {
       await updateUpload(uploadId, { status: 'queued', errorCode: code, errorMessage: message }).catch(() => {});
       await updateJob(processingJobId, { status: 'queued', errorCode: code, errorMessage: message }).catch(() => {});

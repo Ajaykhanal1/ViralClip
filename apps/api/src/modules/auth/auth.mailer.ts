@@ -45,6 +45,11 @@ async function send(to: string, subject: string, text: string): Promise<void> {
   await sender.sendMail({ from: env.SMTP_FROM, to, subject, text });
 }
 
+/** Reused by notification emails so dev-mode logging and SMTP config stay in one place. */
+export async function sendNotificationEmail(to: string, subject: string, text: string): Promise<void> {
+  await send(to, subject, text);
+}
+
 export const smtpMailer: Mailer = {
   async sendVerification(to, token) {
     await send(

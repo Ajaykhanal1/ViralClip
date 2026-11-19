@@ -3,11 +3,14 @@ import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
 import { env } from '../../config/env.js';
+import { logger } from '../../config/logger.js';
 import { AppError } from '../../http/errors.js';
 import { probeMedia } from '../../media/probe.js';
 import { isAllowedFilename, isAllowedMime, normalizeMime, validateVideoFile } from '../../lib/upload-validation.js';
 import { ensureParent, fileSize, newStorageKey, removeKey, resolveStoragePath } from '../../storage/local.js';
+import * as notifications from '../notifications/notifications.service.js';
 import * as sources from '../sources/sources.repository.js';
+import * as usage from '../usage/usage.service.js';
 import * as processing from '../processing/processing.service.js';
 import * as repo from './uploads.repository.js';
 
@@ -50,6 +53,9 @@ export async function createUploadSession(
       throw new AppError(404, 'SOURCE_NOT_FOUND', 'Source video not found');
     }
   }
+
+  await usage.assertWithinLimit(userId, 'uploadedVideos');
+  if (input.sizeBytes != null) await usage.assertWithinLimit(userId, 'uploadedStorageBytes', input.sizeBytes);
 
   const token = randomBytes(32).toString('hex');
   const storageKey = newStorageKey('uploads', input.filename);
@@ -95,11 +101,7 @@ async function writeLimited(stream: Readable, destPath: string, maxBytes: number
       stream.destroy(new AppError(413, 'FILE_TOO_LARGE', `Maximum upload size is ${maxBytes} bytes.`));
     }
   });
-  try {
-    await pipeline(stream, createWriteStream(destPath, { flags: 'w' }));
-  } catch (e) {
-    throw e;
-  }
+  await pipeline(stream, createWriteStream(destPath, { flags: 'w' }));
   return bytes;
 }
 
@@ -171,6 +173,17 @@ export async function receiveUploadContent(opts: {
     }
 
     await repo.markStatus(session.id, 'uploaded', { bytesReceived: actualSize, errorMessage: null });
+    await Promise.all([
+      usage.recordUsage(session.userId, 'uploadedVideos', 1, `video:${sourceId}`),
+      usage.recordUsage(session.userId, 'uploadedStorageBytes', actualSize, `storage:${session.storageKey}`),
+      notifications.notify(session.userId, {
+        type: 'video_upload_completed',
+        title: 'Video uploaded',
+        message: `${session.originalFilename} was uploaded successfully.`,
+        severity: 'success',
+        data: { projectId: session.projectId, sourceVideoId: sourceId, bytes: actualSize },
+      }),
+    ]).catch((error) => logger.warn({ error, sessionId: session.id }, 'upload tracking failed'));
     try {
       await processing.enqueueIngestionForSource(session.userId, sourceId);
     } catch (queueError) {

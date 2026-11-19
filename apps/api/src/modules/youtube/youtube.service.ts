@@ -14,6 +14,7 @@ import * as processingRepo from '../processing/processing.repository.js';
 import * as processing from '../processing/processing.service.js';
 import * as renderRepo from '../render/render.repository.js';
 import { runPublishingCheck } from '../rights/rights.service.js';
+import { assertWithinLimit } from '../usage/usage.service.js';
 import * as repo from './youtube.repository.js';
 
 /** Minimum scopes: upload Shorts and read channel identity at connect time. */
@@ -138,6 +139,7 @@ export async function createUpload(userId: number, input: YouTubeUploadInput): P
   if (!rights.allowed) {
     throw new AppError(403, 'RIGHTS_REQUIRED', `Upload blocked by rights check: ${rights.reasons.join(' ')}`, { reasons: rights.reasons });
   }
+  await assertWithinLimit(userId, 'youtubeUploads');
 
   const upload = await repo.insertUpload({
     userId,

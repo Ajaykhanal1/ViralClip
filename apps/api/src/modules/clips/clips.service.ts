@@ -2,6 +2,7 @@ import { QUEUE_NAMES } from '@viralclip/shared';
 import { AppError } from '../../http/errors.js';
 import * as processing from '../processing/processing.service.js';
 import { runPublishingCheck } from '../rights/rights.service.js';
+import { assertWithinLimit } from '../usage/usage.service.js';
 import * as repo from './clips.repository.js';
 
 function assertSource(userId: number, source: { projectId: number } | null) {
@@ -27,6 +28,7 @@ export async function requestAnalysis(
   if (!rights.allowed) {
     throw new AppError(403, 'RIGHTS_REQUIRED', `AI analysis blocked by rights check: ${rights.reasons.join(' ')}`, { reasons: rights.reasons });
   }
+  await assertWithinLimit(userId, 'aiUsage');
 
   const job = await processing.createJobForSource({
     userId,

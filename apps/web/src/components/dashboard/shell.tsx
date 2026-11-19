@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { notificationState } from '@/lib/account-api';
 import { useAuthStore } from '@/store/auth-store';
 
 const nav = [
@@ -15,10 +16,13 @@ const nav = [
   { href: '/render', label: 'Render' },
   { href: '/youtube', label: 'YouTube' },
   { href: '/rights', label: 'Rights' },
+  { href: '/notifications', label: 'Notifications' },
+  { href: '/usage', label: 'Usage' },
+  { href: '/subscription', label: 'Plans' },
   { href: '/settings/profile', label: 'Settings' },
 ];
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({ onNavigate, unreadCount = 0 }: { onNavigate?: () => void; unreadCount?: number }) {
   const pathname = usePathname();
   return (
     <nav className="flex flex-col gap-1">
@@ -34,6 +38,9 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             }`}
           >
             {item.label}
+            {item.href === '/notifications' && unreadCount > 0 ? (
+              <span className="ml-2 bg-accent px-1.5 py-0.5 text-[10px] font-bold text-white">{unreadCount}</span>
+            ) : null}
           </Link>
         );
       })}
@@ -48,10 +55,23 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    let active = true;
+    const load = () => {
+      void notificationState()
+        .then((state) => { if (active) setUnreadCount(state.unreadCount); })
+        .catch(() => {});
+    };
+    load();
+    const timer = setInterval(load, 30_000);
+    return () => { active = false; clearInterval(timer); };
+  }, []);
 
   async function signOut() {
     setSigningOut(true);
@@ -72,7 +92,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <span className="grid size-7 place-items-center bg-accent text-xs font-bold text-white">V</span>
             <span className="text-sm font-semibold tracking-tight">ViralClip AI</span>
           </Link>
-          <NavLinks />
+          <NavLinks unreadCount={unreadCount} />
           <div className="mt-auto border-t border-ink/15 pt-4 px-3 text-xs text-ink-soft">
             <p className="truncate font-medium text-ink">{user?.displayName}</p>
             <p className="truncate">{user?.email}</p>
@@ -128,7 +148,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     Close
                   </button>
                 </div>
-                <NavLinks onNavigate={() => setOpen(false)} />
+                <NavLinks onNavigate={() => setOpen(false)} unreadCount={unreadCount} />
                 <div className="mt-6 border-t border-ink/15 pt-4 text-xs text-ink-soft">
                   <p className="font-medium text-ink">{user?.displayName}</p>
                   <button

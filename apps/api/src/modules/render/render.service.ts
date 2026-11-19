@@ -5,6 +5,7 @@ import { validateTimeline } from '../editor/editor.timeline.js';
 import * as processingRepo from '../processing/processing.repository.js';
 import * as processing from '../processing/processing.service.js';
 import { runPublishingCheck } from '../rights/rights.service.js';
+import { assertWithinLimit } from '../usage/usage.service.js';
 import * as repo from './render.repository.js';
 
 const finished = new Set(['completed', 'failed', 'cancelled']);
@@ -29,6 +30,7 @@ export async function start(userId: number, editId: number): Promise<{ job: Rend
   if (!rights.allowed) {
     throw new AppError(403, 'RIGHTS_REQUIRED', `Render blocked by rights check: ${rights.reasons.join(' ')}`, { reasons: rights.reasons });
   }
+  await assertWithinLimit(userId, 'renderedVideos');
 
   const active = await processingRepo.findActiveJobForSource(edit.sourceVideoId, QUEUE_NAMES.videoRendering);
   if (active) throw new AppError(409, 'RENDER_IN_PROGRESS', 'A render job is already active for this source');

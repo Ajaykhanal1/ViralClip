@@ -1,11 +1,13 @@
 import path from 'node:path';
 import { Queue, type Job } from 'bullmq';
+import type { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import type { ProcessingJobPayload } from '@viralclip/shared';
 import { QUEUE_NAMES, redisConnectionFromUrl } from '@viralclip/shared';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { extractAudio, generateThumbnail, generateWaveform, probeMedia } from '../media/ffmpeg.js';
 import { appendLog, artifactExists, getSourceAsset, insertArtifact, isCancelled, markJobRunning, setSourceStatus, updateJob } from '../processing/jobs.js';
+import { emitEvent } from '../processing/notifications.js';
 import { pool } from '../db/mysql.js';
 
 let transcriptionQueue: Queue<ProcessingJobPayload> | null = null;
@@ -22,9 +24,9 @@ function getTranscriptionQueue() {
 
 async function enqueueAutoTranscription(userId: number, projectId: number, sourceVideoId: number) {
   try {
-    const [existing] = await pool.execute<any[]>(`SELECT id FROM processing_jobs WHERE source_video_id = ? AND queue_name = ? AND status IN ('queued','processing','completed') ORDER BY id DESC LIMIT 1`, [sourceVideoId, QUEUE_NAMES.transcription]);
+    const [existing] = await pool.execute<RowDataPacket[]>(`SELECT id FROM processing_jobs WHERE source_video_id = ? AND queue_name = ? AND status IN ('queued','processing','completed') ORDER BY id DESC LIMIT 1`, [sourceVideoId, QUEUE_NAMES.transcription]);
     if (existing?.[0]) return;
-    const [res] = await pool.execute<any>(
+    const [res] = await pool.execute<ResultSetHeader>(
       `INSERT INTO processing_jobs (user_id, project_id, source_video_id, queue_name, job_type, status, progress, max_attempts, payload_json)
        VALUES (?, ?, ?, ?, 'transcription', 'queued', 0, 3, ?)`,
       [userId, projectId, sourceVideoId, QUEUE_NAMES.transcription, JSON.stringify({ auto: true })],
@@ -73,6 +75,13 @@ export async function processVideoIngestion(job: Job<ProcessingJobPayload>): Pro
     await markJobRunning(processingJobId, attempt);
     await appendLog(processingJobId, 'info', 'Video ingestion started', { attempt, sourceVideoId });
     await setSourceStatus(userId, sourceVideoId, 'processing');
+    await emitEvent({
+      userId,
+      type: 'video_processing_started',
+      title: 'Video processing started',
+      message: `Processing started for source video #${sourceVideoId}.`,
+      data: { sourceVideoId, processingJobId, projectId: job.data.projectId },
+    });
 
     const asset = await getSourceAsset(sourceVideoId);
     if (!asset) throw new Error('No source media asset found for processing');
@@ -137,6 +146,16 @@ export async function processVideoIngestion(job: Job<ProcessingJobPayload>): Pro
     await updateJob(processingJobId, { status: 'completed', progress: 100, completed: true, errorCode: null, errorMessage: null });
     await setSourceStatus(userId, sourceVideoId, 'ready');
     await appendLog(processingJobId, 'info', 'Video ingestion completed');
+    await emitEvent({
+      userId,
+      type: 'video_upload_completed',
+      title: 'Video processing finished',
+      message: `Source video #${sourceVideoId} is ready for clipping.`,
+      severity: 'success',
+      data: { sourceVideoId, processingJobId, projectId: job.data.projectId },
+      // Source duration is the processing-cost proxy; keyed by job so retries are idempotent.
+      usage: { metric: 'processingMinutes', amount: Math.round((probe.durationSeconds ?? 0) / 0.6) / 100, key: `processing:${processingJobId}` },
+    });
     await enqueueAutoTranscription(userId, job.data.projectId, sourceVideoId);
     return { ok: true };
   } catch (err) {
