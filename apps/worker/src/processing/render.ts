@@ -74,17 +74,23 @@ export interface TextOverlay {
   seconds: number;
   file: string;
   enable: string;
+  x?: number;
+  y?: number;
+  fontSize?: number;
+  color?: string;
 }
 
 export function buildTextFilter(overlay: TextOverlay): string | null {
   if (!overlay.text || overlay.seconds <= 0) return null;
+  const x = overlay.x === undefined ? '(w-tw)/2' : `w*${round(overlay.x)}-tw/2`;
+  const y = overlay.y === undefined ? 'h/2' : `h*${round(overlay.y)}`;
   return [
     `drawtext=textfile=${overlay.file}`,
     'expansion=none',
-    'fontsize=56',
-    'fontcolor=white',
-    'x=(w-tw)/2',
-    'y=h/2',
+    `fontsize=${Math.round(overlay.fontSize ?? 56)}`,
+    `fontcolor=${overlay.color ?? 'white'}`,
+    `x=${x}`,
+    `y=${y}`,
     `enable='${overlay.enable}'`,
   ].join(':');
 }
@@ -148,6 +154,133 @@ export function buildRenderArgs(input: {
     '-map_metadata', '0',
     input.outputPath,
   ];
+}
+
+export interface EditedClipInput {
+  inputPath: string;
+  sourceStartMs: number;
+  durationMs: number;
+  cropX: number;
+  cropY: number;
+  zoom: number;
+  rotation: number;
+  speed: number;
+  volume: number;
+  muted: boolean;
+  fadeInMs: number;
+  fadeOutMs: number;
+  transitionMs: number;
+}
+
+function seconds(ms: number): string {
+  return String(Math.round((ms / 1000) * 10000) / 10000);
+}
+
+function clipVideoFilter(clip: EditedClipInput, width: number, height: number, index: number): string {
+  const crop = planCrop('center', clip.cropX, clip.cropY);
+  const parts = [
+    `fps=30`,
+    `setpts=PTS/${round(Math.max(0.25, clip.speed))}`,
+  ];
+  if (clip.rotation) parts.push(`rotate=${round((clip.rotation * Math.PI) / 180)}:ow=iw:oh=ih`);
+  const zoom = Math.max(0.5, Math.min(4, clip.zoom));
+  if (zoom !== 1) parts.push(`scale=iw*${round(zoom)}:ih*${round(zoom)}`);
+  parts.push(
+    `crop=${crop.width}:${crop.height}:x='${crop.x}':y='${crop.y}'`,
+    `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+    `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
+    'setsar=1',
+  );
+  const fadeIn = Math.max(clip.fadeInMs, clip.transitionMs);
+  const fadeOut = Math.max(clip.fadeOutMs, clip.transitionMs);
+  if (fadeIn > 0) parts.push(`fade=t=in:st=0:d=${seconds(fadeIn)}`);
+  if (fadeOut > 0) parts.push(`fade=t=out:st=${seconds(Math.max(0, clip.durationMs - fadeOut))}:d=${seconds(fadeOut)}`);
+  parts.push('format=yuv420p');
+  return `[${index}:v]${parts.join(',')}[v${index}]`;
+}
+
+/** atempo only accepts 0.5..2; chain filters for wider editor speeds. */
+function atempoFilter(speed: number): string {
+  let remaining = Math.max(0.25, Math.min(4, speed));
+  const parts: string[] = [];
+  while (remaining > 2) { parts.push('atempo=2'); remaining /= 2; }
+  while (remaining < 0.5) { parts.push('atempo=0.5'); remaining *= 2; }
+  parts.push(`atempo=${round(remaining)}`);
+  return parts.join(',');
+}
+
+function clipAudioFilter(clip: EditedClipInput, index: number): string {
+  const parts = ['asetpts=PTS-STARTPTS', atempoFilter(clip.speed)];
+  parts.push(`volume=${clip.muted ? 0 : round(clip.volume)}`);
+  if (clip.fadeInMs > 0) parts.push(`afade=t=in:st=0:d=${seconds(clip.fadeInMs)}`);
+  if (clip.fadeOutMs > 0) parts.push(`afade=t=out:st=${seconds(Math.max(0, clip.durationMs - clip.fadeOutMs))}:d=${seconds(clip.fadeOutMs)}`);
+  return `[${index}:a]${parts.join(',')}[a${index}]`;
+}
+
+/** Authorized audio asset placed on an audio track, mixed over the video's own audio. */
+export interface EditedAudioInput {
+  inputPath: string;
+  sourceStartMs: number;
+  durationMs: number;
+  volume: number;
+  muted: boolean;
+  fadeInMs: number;
+  fadeOutMs: number;
+}
+
+/** Renders a non-destructive editor timeline. Transitions use clip fades where xfade is unsupported. */
+export function buildEditedRenderArgs(input: {
+  clips: EditedClipInput[];
+  audioClips?: EditedAudioInput[];
+  outputPath: string;
+  width: number;
+  height: number;
+  subtitleFilter: string | null;
+  overlays: Array<string | null>;
+}): string[] {
+  if (input.clips.length === 0) throw new Error('Timeline has no video clips');
+  const args: string[] = ['-y'];
+  const filters: string[] = [];
+  for (const [index, clip] of input.clips.entries()) {
+    const inputSeconds = seconds(clip.durationMs * Math.max(0.25, clip.speed));
+    args.push('-ss', seconds(clip.sourceStartMs), '-t', inputSeconds, '-i', clip.inputPath);
+    filters.push(clipVideoFilter(clip, input.width, input.height, index));
+    filters.push(clipAudioFilter(clip, index));
+  }
+  const concatInputs = input.clips.flatMap((_, index) => `[v${index}][a${index}]`).join('');
+  filters.push(`${concatInputs}concat=n=${input.clips.length}:v=1:a=1[vcat][acat]`);
+  let current = 'vcat';
+  for (const [step, overlay] of [...input.overlays, input.subtitleFilter].filter((item): item is string => !!item).entries()) {
+    filters.push(`[${current}]${overlay}[tmp${step}]`);
+    current = `tmp${step}`;
+  }
+  filters.push(`[${current}]format=yuv420p[vout]`);
+
+  let audioOut = 'acat';
+  const audioClips = input.audioClips ?? [];
+  for (const [offset, audio] of audioClips.entries()) {
+    const index = input.clips.length + offset;
+    args.push('-ss', seconds(audio.sourceStartMs), '-t', seconds(audio.durationMs), '-i', audio.inputPath);
+    const parts = ['asetpts=PTS-STARTPTS'];
+    parts.push(`volume=${audio.muted ? 0 : round(audio.volume)}`);
+    if (audio.fadeInMs > 0) parts.push(`afade=t=in:st=0:d=${seconds(audio.fadeInMs)}`);
+    if (audio.fadeOutMs > 0) parts.push(`afade=t=out:st=${seconds(Math.max(0, audio.durationMs - audio.fadeOutMs))}:d=${seconds(audio.fadeOutMs)}`);
+    const label = `ax${offset}`;
+    filters.push(`[${index}:a]${parts.join(',')}[${label}]`);
+    const next = `amix${offset}`;
+    filters.push(`[${audioOut}][${label}]amix=inputs=2:duration=first[${next}]`);
+    audioOut = next;
+  }
+
+  args.push(
+    '-filter_complex', filters.join(';'),
+    '-map', '[vout]',
+    '-map', `[${audioOut}]`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-map_metadata', '0',
+    input.outputPath,
+  );
+  return args;
 }
 
 export interface SubtitleSegmentForRender {

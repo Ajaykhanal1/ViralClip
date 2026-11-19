@@ -252,6 +252,7 @@ export interface VideoRenderingJob extends ProcessingJobPayload {
   queue: 'video-rendering';
   draftIds: number[];
   options: ShortRenderOptions;
+  editId?: number;
 }
 export interface YoutubeUploadJob extends ProcessingJobPayload {
   queue: 'youtube-upload';
@@ -635,4 +636,113 @@ export interface SubtitleTrack {
   createdAt: string;
   updatedAt: string;
   segments?: SubtitleSegment[];
+}
+
+/** Phase 10 — non-destructive editor contracts. All times are milliseconds. */
+export type EditorTrackKind = 'video' | 'audio' | 'subtitle' | 'text';
+export type EditorAssetKind = 'video' | 'audio' | 'text' | 'image';
+
+export interface EditorAsset {
+  id: number;
+  userId: number;
+  editId: number;
+  kind: EditorAssetKind;
+  label: string;
+  storageKey: string | null;
+  rightsId: number | null;
+  config: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TimelineClip {
+  id: string;
+  trackId: string;
+  assetId: number | null;
+  label: string;
+  sourceStartMs: number;
+  sourceEndMs: number;
+  startMs: number;
+  durationMs: number;
+  cropX: number;
+  cropY: number;
+  zoom: number;
+  rotation: number;
+  speed: number;
+  volume: number;
+  muted: boolean;
+  fadeInMs: number;
+  fadeOutMs: number;
+  transitionMs: number;
+}
+
+export interface EditorTrack {
+  id: string;
+  kind: EditorTrackKind;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  clips: TimelineClip[];
+}
+
+export interface EditorCue {
+  id: string;
+  startMs: number;
+  endMs: number;
+  text: string;
+  style: SubtitleStyle;
+}
+
+export interface EditorTextOverlay {
+  id: string;
+  startMs: number;
+  endMs: number;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  color: string;
+  animation: 'none' | 'fade' | 'slide';
+}
+
+export interface EditorSettings {
+  width: number;
+  height: number;
+  snapMs: number;
+  timelineZoom: number;
+}
+
+/** Structured JSON document; source media is never modified. */
+export interface EditorTimeline {
+  tracks: EditorTrack[];
+  subtitles: EditorCue[];
+  texts: EditorTextOverlay[];
+  settings: EditorSettings;
+}
+
+export interface ClipEdit {
+  id: number;
+  userId: number;
+  draftId: number;
+  projectId: number;
+  sourceVideoId: number;
+  timeline: EditorTimeline;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EditVersion {
+  id: number;
+  editId: number;
+  version: number;
+  label: string;
+  timeline: EditorTimeline;
+  createdAt: string;
+}
+
+export interface EditorStateResult {
+  edit: ClipEdit;
+  versions: EditVersion[];
+  assets: EditorAsset[];
+  draft: ShortDraft;
 }

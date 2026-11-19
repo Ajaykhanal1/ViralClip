@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   buildAudioFilter,
   buildClipSrt,
+  buildEditedRenderArgs,
   buildFilterGraph,
   buildRenderArgs,
   buildSubtitleFilter,
@@ -47,6 +48,39 @@ test('render args keep source metadata and emit MP4/H.264/AAC', () => {
   assert.ok(args.includes('aac'));
   assert.ok(args.includes('+faststart'));
   assert.equal(args.at(-1), 'out.mp4');
+});
+
+test('edited render args concat clips, mix authorized audio, and preserve metadata', () => {
+  const base = {
+    sourceStartMs: 0, cropX: 0, cropY: 0, zoom: 1, rotation: 0, speed: 1,
+    volume: 1, muted: false, fadeInMs: 0, fadeOutMs: 0, transitionMs: 0,
+  };
+  const args = buildEditedRenderArgs({
+    clips: [
+      { ...base, inputPath: 'a.mp4', durationMs: 5000 },
+      { ...base, inputPath: 'b.mp4', durationMs: 4000, speed: 2, transitionMs: 300 },
+    ],
+    audioClips: [{ inputPath: 'music.wav', sourceStartMs: 1000, durationMs: 5000, volume: 0.5, muted: false, fadeInMs: 200, fadeOutMs: 200 }],
+    outputPath: 'edited.mp4',
+    width: 1080,
+    height: 1920,
+    subtitleFilter: null,
+    overlays: ["drawtext=textfile=t.txt:enable='between(t,1,2)'"],
+  });
+  assert.equal(args.filter((arg) => arg === '-i').length, 3);
+  assert.match(args.join(' '), /concat=n=2:v=1:a=1\[vcat\]\[acat\]/);
+  assert.match(args.join(' '), /amix=inputs=2/);
+  assert.match(args.join(' '), /atempo=2/);
+  assert.match(args.join(' '), /volume=0\.5/);
+  assert.ok(args.includes('-map_metadata'));
+  assert.equal(args.at(-1), 'edited.mp4');
+});
+
+test('edited render rejects an empty video timeline', () => {
+  assert.throws(
+    () => buildEditedRenderArgs({ clips: [], outputPath: 'x.mp4', width: 1080, height: 1920, subtitleFilter: null, overlays: [] }),
+    /no video clips/,
+  );
 });
 
 test('subtitle and audio filters honor configuration', () => {

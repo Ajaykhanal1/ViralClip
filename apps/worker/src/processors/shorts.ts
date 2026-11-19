@@ -12,11 +12,14 @@ import { appendLog, getSourceAsset, insertArtifact, isCancelled, markJobRunning,
 import {
   buildAudioFilter,
   buildClipSrt,
+  buildEditedRenderArgs,
   buildFilterGraph,
   buildRenderArgs,
   buildSubtitleFilter,
   buildTextFilter,
   planCrop,
+  type EditedAudioInput,
+  type EditedClipInput,
 } from '../processing/render.js';
 import { ensureDir, newArtifactKey, newTempDir, resolveStoragePath, storeFileToKey } from '../storage/local.js';
 
@@ -29,6 +32,33 @@ const timeoutMs = env.RENDER_TIMEOUT_SECONDS * 1000;
 
 export interface RenderJobPayload extends ProcessingJobPayload {
   draftIds: number[];
+  /** Present when an editor export supplies a structured timeline. */
+  editId?: number;
+}
+
+interface EditRow extends RowDataPacket {
+  id: number;
+  timeline_json: string;
+}
+
+interface AssetRow extends RowDataPacket {
+  id: number;
+  storage_key: string | null;
+}
+
+async function getEdit(userId: number, editId: number): Promise<{ timeline: import('@viralclip/shared').EditorTimeline; assets: Map<number, string> } | null> {
+  const [rows] = await pool.execute<EditRow[]>(
+    `SELECT id, timeline_json FROM clip_edits WHERE id = ? AND user_id = ? LIMIT 1`,
+    [editId, userId],
+  );
+  if (!rows[0]) return null;
+  const [assetRows] = await pool.execute<AssetRow[]>(
+    `SELECT id, storage_key FROM editor_assets WHERE edit_id = ? AND storage_key IS NOT NULL`,
+    [editId],
+  );
+  const assets = new Map<number, string>();
+  for (const row of assetRows) if (row.storage_key) assets.set(Number(row.id), row.storage_key);
+  return { timeline: parseJson(rows[0].timeline_json, { tracks: [], subtitles: [], texts: [], settings: { width: 1080, height: 1920, snapMs: 100, timelineZoom: 1 } }), assets };
 }
 
 interface DraftRow extends RowDataPacket {
@@ -196,38 +226,178 @@ async function renderDraft(input: {
   await runFfmpeg(args, { cwd: tempDir, timeoutMs });
   await extractThumbnail(videoPath, thumbnailPath, Number(draft.hook_ms) - Number(draft.start_ms), Number(draft.duration_ms));
 
-  const videoKey = newArtifactKey('shorts', `${draft.id}-v${draft.version}.mp4`);
-  const thumbnailKey = newArtifactKey('shorts', `${draft.id}-v${draft.version}.jpg`);
-  await storeFileToKey(videoPath, videoKey);
-  await storeFileToKey(thumbnailPath, thumbnailKey);
+  const version = await finalizeRender({
+    processingJobId, draft, version: Number(draft.version), videoPath, thumbnailPath, sourceWidth, sourceHeight,
+  });
+  await updateJob(processingJobId, { progress: 10 + Math.round((index / total) * 80) });
+  await appendLog(processingJobId, 'info', 'Shorts draft rendered', { draftId: draft.id, version, videoKey: newArtifactKey('shorts', `${draft.id}-v${version}.mp4`) });
+}
+
+async function finalizeRender(input: {
+  processingJobId: number;
+  draft: DraftRow;
+  version: number;
+  videoPath: string;
+  thumbnailPath: string;
+  sourceWidth: number;
+  sourceHeight: number;
+}): Promise<number> {
+  const { draft, version } = input;
+  const videoKey = newArtifactKey('shorts', `${draft.id}-v${version}.mp4`);
+  const thumbnailKey = newArtifactKey('shorts', `${draft.id}-v${version}.jpg`);
+  await storeFileToKey(input.videoPath, videoKey);
+  await storeFileToKey(input.thumbnailPath, thumbnailKey);
 
   const editData = {
     ...parseJson<Record<string, unknown>>(draft.edit_data_json, {}),
     output: { storageKey: videoKey, thumbnailKey, width: Number(draft.width), height: Number(draft.height), container: 'mp4' },
-    sourceDimensions: { width: sourceWidth, height: sourceHeight },
+    sourceDimensions: { width: input.sourceWidth, height: input.sourceHeight },
   };
   await pool.execute(
-    `UPDATE shorts_drafts SET status = 'completed', storage_key = ?, thumbnail_key = ?, error_message = NULL, edit_data_json = ? WHERE id = ?`,
-    [videoKey, thumbnailKey, JSON.stringify(editData), draft.id],
+    `UPDATE shorts_drafts SET status = 'completed', storage_key = ?, thumbnail_key = ?, version = ?, error_message = NULL, edit_data_json = ? WHERE id = ?`,
+    [videoKey, thumbnailKey, version, JSON.stringify(editData), draft.id],
   );
   await insertArtifact({
-    jobId: processingJobId,
+    jobId: input.processingJobId,
     sourceVideoId: draft.source_video_id,
     kind: 'short-draft',
     storageKey: videoKey,
     mimeType: 'video/mp4',
-    metadata: { draftId: draft.id, version: draft.version, width: Number(draft.width), height: Number(draft.height) },
+    metadata: { draftId: draft.id, version, width: Number(draft.width), height: Number(draft.height) },
   });
   await insertArtifact({
-    jobId: processingJobId,
+    jobId: input.processingJobId,
     sourceVideoId: draft.source_video_id,
     kind: 'short-thumbnail',
     storageKey: thumbnailKey,
     mimeType: 'image/jpeg',
     metadata: { draftId: draft.id },
   });
+  return version;
+}
+
+async function renderEditedDraft(input: {
+  job: Job<RenderJobPayload>;
+  draft: DraftRow;
+  editId: number;
+  index: number;
+  total: number;
+}): Promise<void> {
+  const { job, draft, editId, index, total } = input;
+  const { processingJobId, userId } = job.data;
+  await pool.execute(`UPDATE shorts_drafts SET status = 'processing', error_message = NULL WHERE id = ?`, [draft.id]);
+
+  const loaded = await getEdit(userId, editId);
+  if (!loaded) throw new Error('Editor project not found');
+  const { timeline, assets } = loaded;
+
+  const sourceAsset = await getSourceAsset(draft.source_video_id);
+  if (!sourceAsset) throw new Error('Source media not found for rendering');
+  const sourcePath = resolveStoragePath(sourceAsset.storageKey);
+  const probe = await probeMedia(sourcePath);
+  const sourceWidth = probe.width ?? 1920;
+  const sourceHeight = probe.height ?? 1080;
+
+  // Asset storage keys come only from rights-declared editor_assets rows, never from client input.
+  const resolvePath = (assetId: number | null): string => {
+    if (assetId != null) {
+      const key = assets.get(assetId);
+      if (!key) throw new Error(`Authorized media for asset ${assetId} is missing`);
+      return resolveStoragePath(key);
+    }
+    return sourcePath;
+  };
+
+  const videoClips: EditedClipInput[] = [];
+  const audioClips: EditedAudioInput[] = [];
+  let durationMs = 0;
+  for (const track of timeline.tracks) {
+    if (!track.visible) continue;
+    // shortcut: timeline gaps are collapsed by concat; add padding when exact gaps must be preserved.
+    for (const clip of [...track.clips].sort((a, b) => a.startMs - b.startMs)) {
+      durationMs = Math.max(durationMs, clip.startMs + clip.durationMs);
+      const inputPath = resolvePath(clip.assetId);
+      if (track.kind === 'video') {
+        videoClips.push({
+          inputPath,
+          sourceStartMs: clip.sourceStartMs,
+          durationMs: clip.durationMs,
+          cropX: clip.cropX, cropY: clip.cropY, zoom: clip.zoom, rotation: clip.rotation,
+          speed: clip.speed, volume: clip.volume, muted: clip.muted,
+          fadeInMs: clip.fadeInMs, fadeOutMs: clip.fadeOutMs, transitionMs: clip.transitionMs,
+        });
+      } else if (track.kind === 'audio' && clip.assetId != null) {
+        audioClips.push({
+          inputPath,
+          sourceStartMs: clip.sourceStartMs,
+          durationMs: clip.durationMs,
+          volume: clip.volume, muted: clip.muted,
+          fadeInMs: clip.fadeInMs, fadeOutMs: clip.fadeOutMs,
+        });
+      }
+    }
+  }
+  if (videoClips.length === 0) throw new Error('Timeline has no visible video clips');
+
+  const tempDir = newTempDir(processingJobId);
+  await ensureDir(tempDir);
+  const videoPath = join(tempDir, `short-${draft.id}-edit.mp4`);
+  const thumbnailPath = join(tempDir, `short-${draft.id}-edit.jpg`);
+
+  let subtitleFilter: string | null = null;
+  if (timeline.subtitles.length > 0) {
+    const srt = buildClipSrt(
+      timeline.subtitles.map((cue) => ({ startMs: cue.startMs, endMs: cue.endMs, text: cue.text })),
+      0,
+      durationMs,
+    );
+    if (srt) {
+      await writeFile(join(tempDir, 'subs.srt'), srt, 'utf8');
+      const style = timeline.subtitles[0].style;
+      subtitleFilter = buildSubtitleFilter({
+        enabled: true,
+        position: style.position ?? 'bottom',
+        fontSize: Number(style.fontSize ?? 48),
+        textColor: String(style.textColor ?? '#FFFFFF'),
+        backgroundColor: String(style.background ?? ''),
+        outlineColor: String(style.outline ?? '#000000'),
+        maxWordsPerLine: 5,
+        highlightKeywords: [],
+      });
+    }
+  }
+
+  const overlays: Array<string | null> = [];
+  for (const [step, text] of timeline.texts.entries()) {
+    const file = `editor-text-${step}.txt`;
+    await writeFile(join(tempDir, file), text.text.slice(0, 200), 'utf8');
+    overlays.push(buildTextFilter({
+      text: text.text,
+      seconds: (text.endMs - text.startMs) / 1000,
+      file,
+      enable: `between(t,${text.startMs / 1000},${text.endMs / 1000})`,
+      x: text.x, y: text.y, fontSize: text.fontSize, color: text.color,
+    }));
+  }
+  // shortcut: text animation is a preview feature; the final render shows static text in its time window.
+
+  const args = buildEditedRenderArgs({
+    clips: videoClips,
+    audioClips,
+    outputPath: videoPath,
+    width: timeline.settings.width,
+    height: timeline.settings.height,
+    subtitleFilter,
+    overlays,
+  });
+  await runFfmpeg(args, { cwd: tempDir, timeoutMs });
+  await extractThumbnail(videoPath, thumbnailPath, Number(draft.hook_ms) - Number(draft.start_ms), Number(draft.duration_ms));
+
+  const version = await finalizeRender({
+    processingJobId, draft, version: Number(draft.version) + 1, videoPath, thumbnailPath, sourceWidth, sourceHeight,
+  });
   await updateJob(processingJobId, { progress: 10 + Math.round((index / total) * 80) });
-  await appendLog(processingJobId, 'info', 'Shorts draft rendered', { draftId: draft.id, version: draft.version, videoKey });
+  await appendLog(processingJobId, 'info', 'Edited timeline rendered', { draftId: draft.id, editId, version });
 }
 
 async function writeOverlay(tempDir: string, file: string, text: string, enable: string): Promise<string | null> {
@@ -236,7 +406,7 @@ async function writeOverlay(tempDir: string, file: string, text: string, enable:
 }
 
 export async function processVideoRendering(job: Job<RenderJobPayload>): Promise<{ ok: true; draftIds: number[] }> {
-  const { processingJobId, userId, sourceVideoId, draftIds } = job.data;
+  const { processingJobId, userId, sourceVideoId, draftIds, editId } = job.data;
   const attempt = job.attemptsMade + 1;
   if (!Array.isArray(draftIds) || draftIds.length === 0) throw new Error('No Shorts drafts were supplied');
 
@@ -255,7 +425,11 @@ export async function processVideoRendering(job: Job<RenderJobPayload>): Promise
       if (!draft || draft.user_id !== userId || draft.source_video_id !== sourceVideoId) {
         throw new Error(`Shorts draft ${draftId} not found for this source`);
       }
-      await renderDraft({ job, draft, index, total: draftIds.length });
+      if (editId) {
+        await renderEditedDraft({ job, draft, editId, index, total: draftIds.length });
+      } else {
+        await renderDraft({ job, draft, index, total: draftIds.length });
+      }
       rendered.push(draftId);
     }
 

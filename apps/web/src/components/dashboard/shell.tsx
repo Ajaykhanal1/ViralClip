@@ -11,6 +11,7 @@ const nav = [
   { href: '/imports', label: 'Imports' },
   { href: '/clips', label: 'Clips' },
   { href: '/shorts', label: 'Shorts' },
+  { href: '/editor', label: 'Editor' },
   { href: '/rights', label: 'Rights' },
   { href: '/settings/profile', label: 'Settings' },
 ];
