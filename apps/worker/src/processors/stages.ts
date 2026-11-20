@@ -24,7 +24,10 @@ async function callAiDetectClips(payload: Record<string, unknown>): Promise<AiAn
   const url = new URL('/api/v1/detect-clips', env.AI_SERVICE_URL).toString();
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(env.AI_SERVICE_TOKEN ? { 'x-ai-service-token': env.AI_SERVICE_TOKEN } : {}),
+    },
     body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null) as AiEnvelope | null;

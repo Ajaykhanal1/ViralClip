@@ -17,7 +17,7 @@ from pathlib import Path
 from statistics import mean
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import settings
 
@@ -159,10 +159,16 @@ class ClipDetectionError(Exception):
 
 
 class TranscriptSegmentIn(BaseModel):
-    startMs: int
-    endMs: int
+    startMs: int = Field(ge=0)
+    endMs: int = Field(ge=0)
     text: str
     speaker: str | None = None
+
+    @model_validator(mode="after")
+    def _ordered_timestamps(self) -> TranscriptSegmentIn:
+        if self.endMs <= self.startMs:
+            raise ValueError("endMs must be greater than startMs")
+        return self
 
 
 class DetectClipsRequest(BaseModel):

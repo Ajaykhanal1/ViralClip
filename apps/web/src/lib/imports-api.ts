@@ -91,11 +91,11 @@ export function uploadWithProgress(opts: {
       }
     };
     const url = new URL(`${API_URL}${opts.uploadPath}`);
-    url.searchParams.set('token', opts.token);
     if (opts.sourceVideoId) url.searchParams.set('sourceVideoId', String(opts.sourceVideoId));
     xhr.open('PUT', url.toString());
     xhr.withCredentials = true;
     xhr.setRequestHeader('content-type', opts.file.type || 'application/octet-stream');
+    xhr.setRequestHeader('x-upload-token', opts.token);
     xhr.send(opts.file);
   });
   return { promise, abort: () => xhr.abort() };

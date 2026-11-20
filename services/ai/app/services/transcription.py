@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +16,9 @@ def _resolve_audio_path(audio_path: str | None, storage_key: str | None) -> Path
         if not root.is_absolute():
             # resolve relative to repo root when running from services/ai
             root = (Path(__file__).resolve().parents[4] / settings.local_storage_dir).resolve()
+        root = root.resolve()
         p = (root / storage_key).resolve()
-        if not str(p).startswith(str(root.resolve())):
+        if not p.is_relative_to(root):
             raise TranscriptionError("Invalid storage key")
         return p
     if audio_path:
@@ -84,7 +83,9 @@ def _run_openai_whisper(path: Path, language: str | None, translate: bool) -> di
 
     model = whisper.load_model(settings.whisper_model)
     task = "translate" if translate else "transcribe"
-    result = model.transcribe(str(path), language=language or None, task=task, word_timestamps=True, verbose=False)
+    result = model.transcribe(
+        str(path), language=language or None, task=task, word_timestamps=True, verbose=False
+    )
     segments = []
     for i, seg in enumerate(result.get("segments", []) or []):
         words = None

@@ -9,6 +9,7 @@ import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './http/errors.js';
 import { requireAuth } from './modules/auth/auth.middleware.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
+import { csrfGuard } from './security/csrf.js';
 import { clipsRouter } from './modules/clips/clips.routes.js';
 import { shortsRouter } from './modules/shorts/shorts.routes.js';
 import { editorRouter } from './modules/editor/editor.routes.js';
@@ -63,6 +64,7 @@ app.use((req, res, next) => {
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigins, credentials: true }));
+app.use(csrfGuard);
 
 // Signed upload URL endpoint: streams raw body, so it must run before json parsing.
 app.put(`${API_PREFIX}/uploads/sessions/:id/content`, (req, res, next) => {

@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     log_level: str = "info"
     cors_origins: str = "http://localhost:3000"
     local_storage_dir: str = "./storage"
+    # Shared with the Node worker. Required when node_env=production.
+    service_token: str = ""
     whisper_model: str = "base"
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
@@ -36,3 +38,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if settings.node_env == "production" and not settings.service_token:
+    raise RuntimeError("SERVICE_TOKEN must be set when NODE_ENV=production")

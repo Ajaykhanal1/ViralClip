@@ -11,6 +11,7 @@ const envSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().positive().max(32).default(2),
   WORKER_HEALTH_PORT: z.coerce.number().int().positive().max(65535).default(4001),
   AI_SERVICE_URL: z.url().default('http://localhost:8000'),
+  AI_SERVICE_TOKEN: z.string().default(''),
   RENDER_TIMEOUT_SECONDS: z.coerce.number().int().positive().max(7200).default(900),
 
   DB_HOST: z.string().default('127.0.0.1'),
@@ -40,6 +41,10 @@ const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
   const issues = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
   throw new Error(`Invalid environment configuration:\n- ${issues.join('\n- ')}`);
+}
+
+if (parsed.data.NODE_ENV === 'production' && !parsed.data.AI_SERVICE_TOKEN) {
+  throw new Error('AI_SERVICE_TOKEN must be set in production');
 }
 
 export const env = parsed.data;

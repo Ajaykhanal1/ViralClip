@@ -51,9 +51,8 @@ uploadsRouter.post('/sessions/:id/cancel', async (req, res) => {
 export async function handleUploadContent(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw new AppError(400, 'VALIDATION_ERROR', 'Invalid session id');
-  const token =
-    (typeof req.query.token === 'string' ? req.query.token : '') ||
-    (typeof req.headers['x-upload-token'] === 'string' ? req.headers['x-upload-token'] : '');
+  // Header only: query tokens would be written to access logs and proxy history.
+  const token = typeof req.headers['x-upload-token'] === 'string' ? req.headers['x-upload-token'] : '';
   if (!token) throw new AppError(401, 'MISSING_UPLOAD_TOKEN', 'Upload token required');
   const sourceVideoId = req.query.sourceVideoId ? Number(req.query.sourceVideoId) : undefined;
   const result = await service.receiveUploadContent({

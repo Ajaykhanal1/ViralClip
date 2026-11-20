@@ -37,8 +37,8 @@ export function planCrop(
   const offsetX = clamp(bias + cropX, -1, 1);
   const offsetY = clamp(cropY, -1, 1);
   return {
-    width: 'trunc(min(iw,ih*9/16)/2)*2',
-    height: 'trunc(min(ih,ow*16/9)/2)*2',
+    width: 'trunc(min(iw\\,ih*9/16)/2)*2',
+    height: 'trunc(min(ih\\,ow*16/9)/2)*2',
     x: `(iw-ow)/2+(${round(offsetX)})*(iw-ow)/2`,
     y: `(ih-oh)/2+(${round(offsetY)})*(ih-oh)/2`,
     offsetX,
@@ -103,7 +103,7 @@ export function buildFilterGraph(input: {
   overlays: Array<string | null>;
 }): string {
   const parts = [
-    `crop=${input.crop.width}:${input.crop.height}:x='${input.crop.x}':y='${input.crop.y}'`,
+    `crop=${input.crop.width}:${input.crop.height}:x=${input.crop.x}:y=${input.crop.y}`,
     `scale=${input.width}:${input.height}:force_original_aspect_ratio=decrease`,
     `pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2:black`,
     'setsar=1',
@@ -186,7 +186,7 @@ function clipVideoFilter(clip: EditedClipInput, width: number, height: number, i
   const zoom = Math.max(0.5, Math.min(4, clip.zoom));
   if (zoom !== 1) parts.push(`scale=iw*${round(zoom)}:ih*${round(zoom)}`);
   parts.push(
-    `crop=${crop.width}:${crop.height}:x='${crop.x}':y='${crop.y}'`,
+    `crop=${crop.width}:${crop.height}:x=${crop.x}:y=${crop.y}`,
     `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
     `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
     'setsar=1',

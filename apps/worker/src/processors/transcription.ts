@@ -33,13 +33,14 @@ interface AiTranscribeResult {
   segments?: AiSegment[];
 }
 
-function clampMs(ms: number, maxMs: number | null): number {
-  let v = Math.max(0, Math.round(ms));
+function clampMs(ms: number, maxMs: number | null, minMs = 0): number {
+  const rounded = Math.round(ms);
+  let v = Number.isFinite(rounded) ? Math.max(minMs, rounded) : minMs;
   if (maxMs != null) v = Math.min(v, maxMs);
   return v;
 }
 
-function normalizeSegments(raw: AiSegment[] | undefined, durationSeconds: number | null) {
+export function normalizeSegments(raw: AiSegment[] | undefined, durationSeconds: number | null) {
   const maxMs = durationSeconds != null && Number.isFinite(durationSeconds) ? Math.round(durationSeconds * 1000) : null;
   const out: Array<{ index: number; startMs: number; endMs: number; text: string; speaker: string | null; words: any[] | null }> = [];
   const src = Array.isArray(raw) ? raw : [];
@@ -54,8 +55,8 @@ function normalizeSegments(raw: AiSegment[] | undefined, durationSeconds: number
     const words = Array.isArray(s.words)
       ? s.words
           .map((w) => ({
-            startMs: clampMs(Number(w.startMs ?? startMs), maxMs),
-            endMs: clampMs(Number(w.endMs ?? endMs), maxMs),
+            startMs: clampMs(Number(w.startMs ?? startMs), endMs, startMs),
+            endMs: clampMs(Number(w.endMs ?? endMs), endMs, startMs),
             text: String(w.text ?? '').trim(),
             confidence: w.confidence ?? null,
           }))
@@ -70,7 +71,10 @@ async function callAiTranscribe(storageKey: string, language?: string | null, tr
   const url = new URL('/api/v1/transcribe', env.AI_SERVICE_URL).toString();
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(env.AI_SERVICE_TOKEN ? { 'x-ai-service-token': env.AI_SERVICE_TOKEN } : {}),
+    },
     body: JSON.stringify({ storageKey, language: language || null, translateToEnglish: !!translate }),
   });
   const body = await res.json().catch(() => null) as any;

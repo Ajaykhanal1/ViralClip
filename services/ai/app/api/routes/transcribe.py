@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -9,9 +9,11 @@ router = APIRouter(tags=["transcription"])
 
 
 class TranscribeRequest(BaseModel):
-    audioPath: Optional[str] = None
-    storageKey: Optional[str] = None
-    language: Optional[str] = Field(default=None, description="Manual language code; null/omit to auto-detect")
+    audioPath: str | None = None
+    storageKey: str | None = None
+    language: str | None = Field(
+        default=None, description="Manual language code; null/omit to auto-detect"
+    )
     translateToEnglish: bool = False
 
 
@@ -28,6 +30,6 @@ def transcribe(req: TranscribeRequest) -> dict[str, Any]:
         )
         return {"success": True, "data": result}
     except TranscriptionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}") from e

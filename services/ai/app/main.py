@@ -1,3 +1,4 @@
+import hmac
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -39,6 +40,22 @@ app.add_middleware(
 
 
 @app.middleware("http")
+async def require_service_token(request: Request, call_next):  # type: ignore[no-untyped-def]
+    # Liveness is public so orchestrators do not need the shared secret.
+    if settings.service_token and request.url.path not in ("/health", "/api/v1/health"):
+        supplied = request.headers.get("x-ai-service-token", "")
+        if not hmac.compare_digest(supplied, settings.service_token):
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "success": False,
+                    "error": {"code": "UNAUTHORIZED", "message": "Service token required"},
+                },
+            )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def request_context(request: Request, call_next):  # type: ignore[no-untyped-def]
     request_id = request.headers.get("x-request-id") or str(uuid4())
     request.state.request_id = request_id
@@ -61,6 +78,18 @@ async def request_context(request: Request, call_next):  # type: ignore[no-untyp
     return response
 
 
+def _serializable_validation_details(exc: RequestValidationError) -> list[dict[str, object]]:
+    # Pydantic puts exception instances in `ctx`, which is not JSON serializable.
+    details: list[dict[str, object]] = []
+    for issue in exc.errors():
+        item: dict[str, object] = dict(issue)
+        ctx = item.get("ctx")
+        if isinstance(ctx, dict):
+            item["ctx"] = {key: str(value) for key, value in ctx.items()}
+        details.append(item)
+    return details
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
@@ -70,7 +99,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             "error": {
                 "code": "VALIDATION_ERROR",
                 "message": "Request validation failed",
-                "details": exc.errors(),
+                "details": _serializable_validation_details(exc),
             },
             "requestId": getattr(request.state, "request_id", None),
         },
