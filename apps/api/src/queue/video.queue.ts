@@ -67,9 +67,7 @@ export async function getBullmqJob(queueName: string, bullmqJobId: string) {
 }
 
 export async function pingRedis(): Promise<void> {
-  await withTimeout(videoQueue.waitUntilReady(), 2000, 'Redis');
-  const client: any = await withTimeout((videoQueue as any).client, 2000, 'Redis');
-  await withTimeout(client.ping(), 2000, 'Redis ping');
+  await withTimeout(videoQueue.getJobCountByTypes('completed'), 2000, 'Redis');
 }
 
 export async function closeQueue(): Promise<void> {
