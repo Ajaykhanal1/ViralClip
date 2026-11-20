@@ -9,9 +9,9 @@ import * as service from './render.service.js';
 export const renderRouter = Router();
 renderRouter.use(requireAuth);
 
-renderRouter.get('/state', (req, res) => {
+renderRouter.get('/state', async (req, res) => {
   const { editId } = stateQuerySchema.parse(req.query);
-  sendOk(res, service.state(req.user!.id, editId));
+  sendOk(res, await service.state(req.user!.id, editId));
 });
 
 renderRouter.post('/', async (req, res) => {
@@ -19,9 +19,9 @@ renderRouter.post('/', async (req, res) => {
   sendOk(res, await service.start(req.user!.id, editId), 202);
 });
 
-renderRouter.get('/jobs/:id', (req, res) => {
+renderRouter.get('/jobs/:id', async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
-  sendOk(res, service.getJob(req.user!.id, id));
+  sendOk(res, await service.getJob(req.user!.id, id));
 });
 
 renderRouter.post('/jobs/:id/cancel', async (req, res) => {

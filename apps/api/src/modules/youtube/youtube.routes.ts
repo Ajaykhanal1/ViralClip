@@ -64,8 +64,8 @@ youtubeRouter.post('/disconnect', async (req, res) => {
   sendOk(res, await service.disconnect(req.user!.id));
 });
 
-youtubeRouter.get('/state', (req, res) => {
-  sendOk(res, service.state(req.user!.id));
+youtubeRouter.get('/state', async (req, res) => {
+  sendOk(res, await service.state(req.user!.id));
 });
 
 youtubeRouter.post('/uploads', async (req, res) => {
@@ -73,8 +73,8 @@ youtubeRouter.post('/uploads', async (req, res) => {
   sendOk(res, await service.createUpload(req.user!.id, input), 202);
 });
 
-youtubeRouter.get('/uploads/:id', (req, res) => {
-  sendOk(res, service.getUpload(req.user!.id, idParamSchema.parse(req.params).id));
+youtubeRouter.get('/uploads/:id', async (req, res) => {
+  sendOk(res, await service.getUpload(req.user!.id, idParamSchema.parse(req.params).id));
 });
 
 youtubeRouter.post('/uploads/:id/retry', async (req, res) => {

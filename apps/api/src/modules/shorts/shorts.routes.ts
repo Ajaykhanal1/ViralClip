@@ -9,9 +9,9 @@ import { generateShortsSchema, idParamSchema, sourceParamSchema, updateShortSche
 export const shortsRouter = Router();
 shortsRouter.use(requireAuth);
 
-shortsRouter.get('/source/:sourceId', (req, res) => {
+shortsRouter.get('/source/:sourceId', async (req, res) => {
   const { sourceId } = sourceParamSchema.parse(req.params);
-  sendOk(res, service.listForSource(req.user!.id, sourceId));
+  sendOk(res, await service.listForSource(req.user!.id, sourceId));
 });
 
 shortsRouter.post('/generate', async (req, res) => {

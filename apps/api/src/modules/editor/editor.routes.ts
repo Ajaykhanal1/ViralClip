@@ -7,9 +7,9 @@ import { assetSchema, draftParamSchema, idParamSchema, saveTimelineSchema, versi
 export const editorRouter = Router();
 editorRouter.use(requireAuth);
 
-editorRouter.get('/drafts/:draftId', (req, res) => {
+editorRouter.get('/drafts/:draftId', async (req, res) => {
   const { draftId } = draftParamSchema.parse(req.params);
-  sendOk(res, service.load(req.user!.id, draftId));
+  sendOk(res, await service.load(req.user!.id, draftId));
 });
 
 editorRouter.put('/edits/:id', async (req, res) => {
