@@ -35,8 +35,8 @@ async function enqueueAutoTranscription(userId: number, projectId: number, sourc
     await pool.execute(`INSERT INTO processing_job_logs (job_id, level, message, details_json) VALUES (?, 'info', ?, ?)`, [id, 'Queued automatic transcription', JSON.stringify({ queue: QUEUE_NAMES.transcription })]).catch(() => {});
     const payload: ProcessingJobPayload = { processingJobId: id, userId, projectId, sourceVideoId, requestedAt: new Date().toISOString() };
     const q = getTranscriptionQueue();
-    const bull = await q.add(`job-${id}`, payload, { jobId: String(id) });
-    await pool.execute(`UPDATE processing_jobs SET bullmq_job_id = ? WHERE id = ?`, [bull.id ?? String(id), id]);
+    const bull = await q.add(`job-${id}`, payload, { jobId: `job-${id}` });
+    await pool.execute(`UPDATE processing_jobs SET bullmq_job_id = ? WHERE id = ?`, [bull.id ?? `job-${id}`, id]);
   } catch (e) {
     logger.warn({ err: e, sourceVideoId }, 'failed to auto-enqueue transcription');
   }

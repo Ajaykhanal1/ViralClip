@@ -55,7 +55,7 @@ export async function enqueueProcessingJob(queueName: string, data: ProcessingJo
   const queue = processingQueues[queueName];
   if (!queue) throw new Error(`Unknown processing queue: ${queueName}`);
   const job = await queue.add(data.processingJobId ? `job-${data.processingJobId}` : queueName, data, {
-    jobId: data.processingJobId ? String(data.processingJobId) : undefined,
+    jobId: data.processingJobId ? `job-${data.processingJobId}` : undefined,
   });
   return job.id ?? String(data.processingJobId);
 }

@@ -5,7 +5,10 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { env } from '../config/env.js';
 
-const storageRoot = path.resolve(process.cwd(), env.LOCAL_STORAGE_DIR);
+const repoRoot = path.resolve(import.meta.dirname, '../../../../');
+const storageRoot = path.isAbsolute(env.LOCAL_STORAGE_DIR)
+  ? env.LOCAL_STORAGE_DIR
+  : path.resolve(repoRoot, env.LOCAL_STORAGE_DIR);
 
 function assertSafeKey(key: string): string {
   const normalized = key.replace(/\\/g, '/');

@@ -7,10 +7,10 @@ import { env } from '../config/env.js';
 const repoRoot = path.resolve(import.meta.dirname, '../../../../');
 const storageRoot = path.isAbsolute(env.LOCAL_STORAGE_DIR)
   ? env.LOCAL_STORAGE_DIR
-  : path.resolve(process.cwd(), env.LOCAL_STORAGE_DIR);
+  : path.resolve(repoRoot, env.LOCAL_STORAGE_DIR);
 const tempRoot = path.isAbsolute(env.PROCESSING_TEMP_DIR)
   ? env.PROCESSING_TEMP_DIR
-  : path.resolve(process.cwd(), env.PROCESSING_TEMP_DIR);
+  : path.resolve(repoRoot, env.PROCESSING_TEMP_DIR);
 
 function assertSafeKey(key: string): string {
   const normalized = key.replace(/\\/g, '/');

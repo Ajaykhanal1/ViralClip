@@ -15,7 +15,7 @@ interface PlanRow extends RowDataPacket {
   description: string | null;
   price_monthly_cents: number;
   currency: string;
-  limits_json: string;
+  limits_json: string | PlanLimits;
   is_active: number;
   sort_order: number;
   created_at: Date;
@@ -34,8 +34,8 @@ interface SubscriptionRow extends RowDataPacket {
   updated_at: Date;
 }
 
-function parseLimits(value: string): PlanLimits {
-  const parsed = JSON.parse(value) as Partial<Record<UsageMetric, number | null>>;
+function parseLimits(value: PlanRow['limits_json']): PlanLimits {
+  const parsed = (typeof value === 'string' ? JSON.parse(value) : value) as Partial<Record<UsageMetric, number | null>>;
   const limits = {} as PlanLimits;
   for (const metric of USAGE_METRICS) limits[metric] = parsed[metric] ?? null;
   return limits;
