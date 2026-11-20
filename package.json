@@ -30,6 +30,11 @@
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f",
+    "prod:config": "docker compose -f docker-compose.prod.yml config",
+    "prod:deploy": "bash scripts/deploy.sh",
+    "prod:rollback": "bash scripts/rollback.sh",
+    "prod:backup": "bash scripts/backup-mysql.sh",
+    "prod:verify": "node scripts/verify-production-flow.mjs",
     "postinstall": "npm run build -w @viralclip/shared"
   },
   "devDependencies": {

@@ -61,11 +61,23 @@ docs/         Architecture, database, flow, workflow, security
 - [System flow](docs/SYSTEM_FLOW.md)
 - [Development workflow](docs/DEVELOPMENT_WORKFLOW.md)
 - [Security](docs/SECURITY.md)
+- [Phase 14 report](docs/PHASE_14_REPORT.md)
+- [Production deployment](docs/DEPLOYMENT.md)
+- [Rollback](docs/ROLLBACK.md)
+- [Backup and restore](docs/BACKUP_RESTORE.md)
+- [Monitoring and logging](docs/MONITORING_LOGGING.md)
+- [DNS and TLS](docs/DNS_TLS.md)
+- [Production checklist](docs/PRODUCTION_CHECKLIST.md)
+- [Phase 15 report](docs/PHASE_15_REPORT.md)
 
-## Phase boundaries
+## Production
 
-Authentication is real: HTTP-only cookies, short-lived access tokens, rotating refresh tokens,
-hashed passwords, and ownership checks on the video endpoint. The API still never processes media.
-`POST /api/v1/videos` requires a signed-in user and persists metadata before enqueueing a job; the
-worker processor is a logging stub marked `shortcut:` in code. Upload, transcription, project
-management, clip selection, rendering, S3, and application Dockerfiles remain for later phases.
+```bash
+cp .env.example .env
+bash scripts/generate-secrets.sh   # put values in .env
+# place TLS certs in deploy/certs/
+bash scripts/deploy.sh
+```
+
+The production stack is defined in `docker-compose.prod.yml`. It is **not** deployed by CI; see
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) before claiming a deployment succeeded.

@@ -7,6 +7,9 @@ dotenv.config({ path: path.resolve(process.cwd(), '../../.env'), quiet: true });
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
+  // Trace from the monorepo root so @viralclip/shared is included in the standalone bundle.
+  outputFileTracingRoot: path.join(__dirname, '../../'),
   transpilePackages: ['@viralclip/shared'],
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000',
